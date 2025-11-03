@@ -31,3 +31,6 @@ A(r,t) =
 \cdot \underbrace{\theta \log(1+t) + \phi \sin\left(\frac{2\pi t}{P}\right) + \psi e^{-t/\tau}}_{\text{GeniePower}(t)}
 \cdot e^{-t/\tau_A}
 }
+
+```bash
+python aladin_vinfinity.py
