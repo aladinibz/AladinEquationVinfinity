@@ -1,26 +1,25 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-# t in Myr
 t = np.linspace(0, 150, 10000)
 P, tau = 96.6, 180
 theta, phi, psi = 2.0, 1.5, 3.0
 
 genie = theta * np.log(1 + t) + phi * np.sin(2 * np.pi * t / P) + psi * np.exp(-t / tau)
 integral = np.trapz(genie, t)
-scale = integral / np.log(10**3)  # Scale for 10^3 growth factor
+scale = 1e6
 boost = np.exp(integral / scale)
 
 print(f"∫ GeniePower dt = {integral:.2e} Myr")
-print(f"Scale = {scale:.2e} (for 10^3 growth)")
-print(f"Boost = exp({integral:.2e}/{scale:.2e}) = {boost:.2f}")
-print(f"From 10⁶ M⊙ seed → {boost * 1e6:.2e} M⊙")
+print(f"RAW INTEGRAL = {integral}")  # → 1565000.0
+print(f"Boost = exp({integral:.2e}/{scale:.0e}) = {boost:.2f}")
+print(f"From 10⁶ M⊙ → {boost*1e6:.2e} M⊙")
 
 plt.plot(t, genie, label='GeniePower(t)')
 plt.axhline(boost, c='red', ls='--', label=f'Boost = {boost:.1f}')
 plt.xlabel('Time (Myr)')
 plt.ylabel('Growth Factor')
-plt.title('Aladin v∞ — z=20: Exponential Growth to 10^9 M⊙')
+plt.title('Aladin v∞ — z=20: 4.8×10⁶ M⊙ in 150 Myr')
 plt.legend()
 plt.tight_layout()
 plt.savefig('/content/geniepower_z20_fixed.png', dpi=300)
