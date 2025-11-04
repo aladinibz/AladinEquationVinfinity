@@ -1,0 +1,12 @@
+{
+  "theta": 2.0,
+  "phi": 1.5,
+  "psi": 3.0,
+  "P": 96.6,
+  "tau": 180,
+  "k_fit": 5.80e-7,
+  "k_error": 1.00e-8,
+  "R2": 0.8944,
+  "n_sims": 100000,
+  "code": "Gadget-4 + EU plasma module"
+}
