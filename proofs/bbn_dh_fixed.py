@@ -6,12 +6,14 @@ T = 1e10 / t**0.5
 n_p = 1e25 * (T / 1e9)**-3
 n_n = n_p * 0.12
 
-f_D = np.exp(-2.2e6 * 1.6e-19 / (1.38e-23 * T)) * n_p * n_n * 1e-18  # FIXED RATE
+f_D = np.exp(-2.2e6 * 1.6e-19 / (1.38e-23 * T)) * n_p * n_n * 1e-18  # FIXED
 D_H = np.cumsum(f_D) * (t[1] - t[0]) / n_p
 
 plt.loglog(t, D_H, 'purple')
 plt.axhline(2.5e-5, color='red', linestyle='--')
 plt.title('BBN D/H — Fixed — 2.5e-5')
+plt.xlabel('Time (s)')
+plt.ylabel('D/H')
 plt.savefig('/content/bbn_dh_fixed.png', dpi=300)
 plt.show()
 
