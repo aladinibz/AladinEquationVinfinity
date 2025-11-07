@@ -1,0 +1,25 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+z = np.array([0.01, 0.1, 0.5, 1.0, 2., 7.5])
+H_obs = np.array([75, 78, 85, 92, 110, 150])
+err = np.array([2, 3, 5, 7, 12, 20])
+
+H0 = 73.0
+H_aladin = H0 * np.log(1 + z)
+log_term = np.log(1 + z)
+F = np.sum(log_term**2 / err**2)
+sigma_H0 = 1 / np.sqrt(F)
+
+print(f"Aladin Fisher: σ_H0 = {sigma_H0:.2f}")
+
+plt.figure(figsize=(6,4))
+plt.errorbar(z, H_obs, err, fmt='ko', capsize=5)
+plt.plot(z, H_aladin, 'gold', lw=3)
+plt.fill_between(z, (H0-sigma_H0)*np.log(1+z), (H0+sigma_H0)*np.log(1+z), color='gold', alpha=0.5)
+plt.xlabel('z'); plt.ylabel('H(z)')
+plt.title(f'Aladin Fisher — H0 = {H0:.0f} ± {sigma_H0:.1f}')
+plt.grid(alpha=0.3)
+plt.tight_layout()
+plt.savefig('fisher_aladin.png', dpi=300)
+plt.close()
