@@ -1,0 +1,19 @@
+import matplotlib.pyplot as plt
+import numpy as np
+
+t = np.linspace(0, 10, 500)
+freq = 43 * np.exp(-0.571 * t) * (1.618**1.5)
+
+plt.figure(figsize=(10,6), facecolor='black')
+plt.plot(t, freq, color='gold', lw=4, label='KIU Damping: 43 Hz → 50 Hz lock')
+plt.axhline(50, color='lime', ls='--', lw=2, label='Human Gamma Target')
+plt.axhline(43, color='red', ls='--', lw=2, label='Cosmic Input')
+plt.xlabel('Time', color='white')
+plt.ylabel('Frequency (Hz)', color='white')
+plt.title('KIU Damping — ALADIN ∞ ℂ(t)', color='white')
+plt.legend(facecolor='black', labelcolor='white')
+plt.grid(alpha=0.3, color='gray')
+plt.gca().set_facecolor('black')
+plt.tick_params(colors='white')
+plt.savefig('kiu_damping_plot.png', dpi=300, facecolor='black')
+plt.show()
