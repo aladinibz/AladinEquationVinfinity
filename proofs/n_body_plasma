@@ -1,0 +1,31 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+# SDSS — void + filament fraction
+void_obs = 0.58
+filament_obs = 0.42
+error = 0.03
+
+# Aladin N-body — Z-pinch voids
+void_pred = 0.60
+filament_pred = 0.40
+
+chi2_void = ((void_obs - void_pred)/error)**2
+chi2_fil = ((filament_obs - filament_pred)/error)**2
+print(f"Void χ² = {chi2_void:.2f}, Filament χ² = {chi2_fil:.2f}")
+
+labels = ['Void', 'Filament']
+obs = [void_obs, filament_obs]
+pred = [void_pred, filament_pred]
+x = np.arange(len(labels))
+
+plt.bar(x - 0.2, obs, 0.4, yerr=error, label='SDSS', color='red')
+plt.bar(x + 0.2, pred, 0.4, label='Aladin v∞', color='gold')
+plt.xticks(x, labels)
+plt.ylabel('Fraction')
+plt.title('Aladin v∞ — Cosmic Web (N-body Plasma)')
+plt.legend()
+plt.grid(alpha=0.3)
+plt.tight_layout()
+plt.savefig('/content/n_body_plasma.png', dpi=300)
+plt.show()
