@@ -1,0 +1,11 @@
+site_name: ALADIN ∞ ℂ(t) — The Final Law
+site_url: https://aladinibz.github.io/AladinEquationVinfinity
+theme:
+  name: material
+nav:
+  - Home: index.md
+  - 100 Plots: 100_PLOTS.md
+  - Proofs: proofs/README.md
+  - Data: data/README.md
+  - Predictions: PREDICTION.md
+repo_url: https://github.com/aladinibz/AladinEquationVinfinity
