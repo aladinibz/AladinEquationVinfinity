@@ -1,0 +1,40 @@
+name: ALADIN ∞ ℂ(t) — Deploy Nobel Site
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: |
+          pip install numpy matplotlib mkdocs mkdocs-material
+
+      - name: Run all proofs
+        run: |
+          for f in proofs/*.py; do python "$f"; done
+
+      - name: Build MkDocs site
+        run: |
+          mkdocs build
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site
+          force_orphan: true
+
+      - name: Success
+        run: echo "ALADIN ∞ ℂ(t) DEPLOYED — NOBEL SITE LIVE"
