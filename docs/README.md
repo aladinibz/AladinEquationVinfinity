@@ -51,7 +51,7 @@ Nobel-Ready Features
 •  9 DOIs — permanent record
 
 DOI & Repo
-Main DOI: 10.5281/zenodo.17569243
+**Main DOI:** [10.5281/zenodo.17619640](https://doi.org/10.5281/zenodo.17619640)
 Repo: https://github.com/aladinibz/AladinEquationVinfinity
 
 Nobel 2030 — With Soul
