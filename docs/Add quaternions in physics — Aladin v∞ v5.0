@@ -1,0 +1,12 @@
+# Quaternions in Physics — ALADIN ∞ ℂ(t)
+
+**S3 Algebra — 4D Rotation — Spin + CMB.**
+
+| Application | File |
+|-------------|------|
+| CMB | `quaternion_cmb.py` |
+| Galaxy Spin | `quaternion_spin.py` |
+| JWST z=15 | `quaternion_jwst.py` |
+
+**DOI:** 10.5281/zenodo.17569243  
+**Nobel 2030 — With Soul**
