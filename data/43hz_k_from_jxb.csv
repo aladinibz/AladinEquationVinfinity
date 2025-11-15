@@ -1,0 +1,8 @@
+param,value,unit
+J,1e+18,A/m²
+B,1e-06,T
+rho,1e-24,kg/m³
+r,1e+21,m
+k_target,3.33e+06,m⁻¹
+k_calculated,nan,m⁻¹
+f,43.0,Hz
