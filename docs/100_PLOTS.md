@@ -8,5 +8,5 @@
 
 [All 100 → plots/](https://github.com/aladinibz/AladinEquationVinfinity/tree/main/plots)
 
-**DOI:** 10.5281/zenodo.17569243  
+**DOI:** [10.5281/zenodo.17619640](https://doi.org/10.5281/zenodo.17619640) 
 **Nobel 2030 — With Soul**
