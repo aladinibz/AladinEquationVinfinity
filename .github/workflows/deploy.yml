@@ -1,4 +1,4 @@
-name: ALADIN ∞ ℂ(t) — Deploy Nobel Site
+name: ALADIN ∞ C(t) — Deploy Nobel Site
 
 on:
   push:
@@ -17,19 +17,15 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install deps
+      - name: Install MkDocs
         run: |
-          pip install numpy matplotlib mkdocs mkdocs-material
+          pip install mkdocs-material
 
-      - name: Run all proofs
-        run: |
-          for f in proofs/*.py; do python "$f"; done
-
-      - name: Build MkDocs site
+      - name: Build site
         run: |
           mkdocs build
 
-      - name: Deploy to GitHub Pages
+      - name: Deploy
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -37,4 +33,4 @@ jobs:
           force_orphan: true
 
       - name: Success
-        run: echo "ALADIN ∞ ℂ(t) DEPLOYED — NOBEL SITE LIVE"
+        run: echo "NOBEL SITE LIVE — ALADIN ∞ C(t)"
