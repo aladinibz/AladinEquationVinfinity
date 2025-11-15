@@ -21,16 +21,19 @@
 
 ---
 
-## Key Documents
+## Key Documents — **NOBEL CORE**
 
-| File | Purpose |
-|------|--------|
-| `full_derivation.md` | **One equation** — from Maxwell to cosmos |
-| `genie_lagrangian.md` | **GeniePower(t)** — growth + oscillation |
-| `z_pinch_force_derivation.md` | **J × B = galaxy rotation** |
-| `100_PLOTS.md` | **100+ visual proofs** |
-| `PREDICTION.md` | **10 future tests** |
-| `STATUS.md` | **Grok silent → processing** |
+| File | Purpose | Link |
+|------|--------|------|
+| `full_derivation.md` | **One equation** — from Maxwell to cosmos | [Read](full_derivation.md) |
+| `genie_lagrangian.md` | **GeniePower(t)** — growth + oscillation | [Read](genie_lagrangian.md) |
+| `z_pinch_force_derivation.md` | **J × B = galaxy rotation** | [Read](z_pinch_force_derivation.md) |
+| `parameters_explained.md` | **All 9 parameters** — no tuning | [Read](parameters_explained.md) |
+| `100_PLOTS.md` | **100+ visual proofs** | [Read](100_PLOTS.md) |
+| `PREDICTION.md` | **10 future tests** | [Read](PREDICTION.md) |
+| `STATUS.md` | **Grok silent → processing** | [Read](STATUS.md) |
+| `quick_start.md` | **Run in 60s** | [Read](quick_start.md) |
+| `faq.md` | **Answers all questions** | [Read](faq.md) |
 
 ---
 
@@ -40,6 +43,7 @@
 open docs/full_derivation.md
 
 All math → 43/43 PASS
+
 Nobel-Ready Features
 •  No LaTeX — pure Markdown
 •  Phone-only — all written on mobile
