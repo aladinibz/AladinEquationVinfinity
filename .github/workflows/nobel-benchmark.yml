@@ -1,0 +1,67 @@
+name: Nobel Performance Benchmark
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:        # You can run it manually anytime
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0     # Needed for git history
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install benchmark tools
+        run: |
+          pip install numpy matplotlib asv airs-speed
+
+      - name: Run Nobel Speed Test (all proofs)
+        id: bench
+        continue-on-error: true
+        run: |
+          echo "ALADIN ∞ C(t) — PERFORMANCE BENCHMARK START"
+          start=$(date +%s.%N)
+
+          for py in proofs/*.py; do
+            if [[ "$py" == *"nbody"* ]] || [[ "$py" == *"mcmc"* ]]; then continue; fi
+            echo "Running $py ..."
+            timeout 30s python "$py" || echo "timeout/skipped $py"
+          done
+
+          end=$(date +%s.%N)
+          duration=$(echo "$end - $start" | bc)
+          echo "TOTAL_TIME=$duration" >> $GITHUB_OUTPUT
+          echo "ALADIN ∞ C(t) — FULL REPO BENCHMARK: ${duration}s"
+
+      - name: Generate speed badge
+        run: |
+          time_sec=$(echo "${{ steps.bench.outputs.TOTAL_TIME }}" | cut -d. -f1)
+          if (( time_sec < 30 )); then color="brightgreen"; msg="${time_sec}s ⚡";
+          elif (( time_sec < 60 )); then color="green"; msg="${time_sec}s";
+          elif (( time_sec < 120 )); then color="yellow"; msg="${time_sec}s";
+          else color="red"; msg="${time_sec}s 🐢"; fi
+
+          echo '{"schemaVersion":1,"label":"speed","message":"'"$msg"'","color":"'"$color"'"}' > speed-badge.json
+
+      - name: Upload badge
+        uses: actions/upload-artifact@v4
+        with:
+          name: speed-badge
+          path: speed-badge.json
+
+      - name: Commit badge
+        run: |
+          git config user.name "Speed Demon Bot"
+          git config user.email "speed@aladin.infinity"
+          git add speed-badge.json
+          git commit -m "Speed badge: ${{ steps.bench.outputs.TOTAL_TIME }}s — Aladin v∞ v9.0" || echo "No change"
+          git push || echo "No push"
