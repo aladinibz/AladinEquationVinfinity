@@ -17,5 +17,5 @@
 
 **All predicted Nov 14, 2025 — Spain — phone-only.**
 
-**DOI:** 10.5281/zenodo.17569243  
+**OFFICIAL ZENODO DOI:** [10.5281/zenodo.17627249](https://doi.org/10.5281/zenodo.17627249) 
 **Repo:** https://github.com/aladinibz/AladinEquationVinfinity
