@@ -1,0 +1,27 @@
+name: Auto-Fix Colab Garbage
+
+on:
+  push:
+    paths:
+      - 'proofs/*.py'
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Remove google.colab lines
+        run: |
+          find proofs -name "*.py" -exec sed -i '/from google.colab/d' {} \;
+          find proofs -name "*.py" -exec sed -i '/files.download/d' {} \;
+          find proofs -name "*.py" -exec sed -i '/plt.show()/d' {} \;
+          find proofs -name "*.py" -exec sed -i 's/plt.show()/plt.savefig(os.path.basename(__file__).replace(".py",".png"), dpi=300, bbox_inches="tight")/g' {} \;
+
+      - name: Commit fix if needed
+        run: |
+          git config user.name "Auto-Fix Bot"
+          git config user.email "bot@aladin.com"
+          git add .
+          git commit -m "Auto-fix Colab lines — Aladin v∞ v5.0" || echo "No changes"
+          git push || echo "No push needed"
