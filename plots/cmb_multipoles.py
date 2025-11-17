@@ -38,10 +38,6 @@ plt.legend()
 plt.grid(alpha=0.3)
 plt.tight_layout()
 
-# --- SAVE + DOWNLOAD ---
-plt.savefig('/content/cmb_multipoles.png', dpi=300, bbox_inches='tight')
-plt.show()
-files.download('/content/cmb_multipoles.png')
-files.download('/content/cmb_multipoles.py')  # Save script too
-
-print("cmb_multipoles.py + .png saved + downloaded")
+# --- SAVE ONLY ---
+plt.savefig('cmb_multipoles.png', dpi=300, bbox_inches='tight')
+print("cmb_multipoles.png saved")
