@@ -38,6 +38,8 @@ phi sin(2pi * 43 * t)
 3. JWST z=25: 10^10 Msun @ 120 Myr (2028)
 4. Nobel Physics: ALADIN ∞ C(t) (2030)
 
+**Predictions DOI:** [10.5281/zenodo.17627249](https://doi.org/10.5281/zenodo.17627249)
+
 ---
 
 ## QUICK START — 60 SECONDS
