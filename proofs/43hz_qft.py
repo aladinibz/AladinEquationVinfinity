@@ -26,4 +26,6 @@ plt.title('Aladin v∞ — 43 Hz QFT Derivation')
 plt.legend()
 plt.grid(alpha=0.3)
 plt.tight_layout()
-plt.show()
+plt.savefig('43hz_qft.png', dpi=300, bbox_inches='tight')
+print("43hz_qft.png saved in plots/")
+
