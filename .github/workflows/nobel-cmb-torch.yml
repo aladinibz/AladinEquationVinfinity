@@ -1,0 +1,93 @@
+name: Nobel CMB PyTorch (Differentiable Universe)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  cmb-torch:
+    runs-on: ubuntu-latest-gpu
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python + PyTorch CUDA
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install PyTorch + science
+        run: |
+          pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+          pip install numpy matplotlib tqdm einops
+
+      - name: Run Differentiable CMB Simulation
+        run: |
+          python - <<'CMB_TORCH'
+import torch
+import torch.nn as nn
+import matplotlib.pyplot as plt
+import numpy as np
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"CMB PyTorch running on {device}")
+
+# Planck 2018 peaks (ℓ, C_ℓ in μK²)
+ell_obs = torch.tensor([220, 540, 815, 1100, 1400], device=device, dtype=torch.float32)
+C_ell_obs = torch.tensor([5800, 3200, 2500, 1800, 1200], device=device)
+
+class ALADIN_CMB(nn.Module):
+    def __init__(self):
+        super().__init__()
+        # Learnable ALADIN parameters
+        self.A = nn.Parameter(torch.tensor(5000.0))
+        self.ℓ_damp = nn.Parameter(torch.tensor(1000.0))
+        self.ℓ_osc = nn.Parameter(torch.tensor(540.0))
+        self.phase = nn.Parameter(torch.tensor(0.0))
+
+    def forward(self, ell):
+        damping = torch.exp(-ell / self.ℓ_damp)
+        oscillation = 1 + 0.6 * torch.sin(2 * np.pi * ell / self.ℓ_osc + self.phase)
+        return self.A * damping * oscillation
+
+model = ALADIN_CMB().to(device)
+optimizer = torch.optim.Adam(model.parameters(), lr=50.0)
+
+ell = torch.linspace(2, 2500, 1000, device=device)
+
+for epoch in range(800):
+    optimizer.zero_grad()
+    C_ell_pred = model(ell)
+    # Focus loss on observed peaks
+    pred_at_peaks = model(ell_obs)
+    loss = ((pred_at_peaks - C_ell_obs)**2).mean()
+    loss.backward()
+    optimizer.step()
+
+print(f"Trained CMB — A: {model.A.item():.0f} | ℓ_damp: {model.ℓ_damp.item():.0f} | ℓ_osc: {model.ℓ_osc.item():.0f}")
+
+# Plot
+plt.figure(figsize=(10,6))
+plt.plot(ell.cpu(), C_ell_pred.cpu().detach(), 'gold', lw=4, label='PyTorch ALADIN CMB')
+plt.scatter(ell_obs.cpu(), C_ell_obs.cpu(), color='cyan', s=100, zorder=5, label='Planck peaks')
+plt.xlabel('ℓ'); plt.ylabel('C_ℓ [μK²]')
+plt.title('ALADIN ∞ C(t) — Differentiable CMB on GPU')
+plt.legend(); plt.grid(alpha=0.3)
+plt.tight_layout()
+plt.savefig('cmb_pytorch.png', dpi=300, bbox_inches='tight')
+print("cmb_pytorch.png saved")
+CMB_TORCH
+
+      - name: Generate CMB badge
+        run: |
+          echo '{"schemaVersion":1,"label":"cmb","message":"PyTorch GPU","color":"brightgreen"}' > cmb-torch-badge.json
+
+      - name: Commit plot + badge
+        run: |
+          git config user.name "CMB God"
+          git config user.email "cmb@aladin.infinity"
+          git add cmb_pytorch.png cmb-torch-badge.json
+          git commit -m "PyTorch learned CMB peaks — ALADIN ∞ C(t) v13.0" || echo "Clean"
+          git push || echo "No push"
