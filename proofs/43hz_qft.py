@@ -28,4 +28,4 @@ plt.grid(alpha=0.3)
 plt.tight_layout()
 plt.savefig('43hz_qft.png', dpi=300, bbox_inches='tight')
 print("43hz_qft.png saved in plots/")
-
+ 
