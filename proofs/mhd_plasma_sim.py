@@ -25,6 +25,5 @@ plt.tight_layout()
 
 # Save the plot
 png_path_for_script = 'mhd_plasma_sim.png'
-plt.savefig(png_path_for_script, dpi=300)
-plt.show()
+plt.savefig(png_path_for_script, dpi=300, bbox_inches='tight')
 print(f"PNG saved: {png_path_for_script}")
