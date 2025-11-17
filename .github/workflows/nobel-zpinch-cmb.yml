@@ -1,0 +1,66 @@
+name: Nobel Z-Pinch → CMB (Full Unification)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  zpinch-cmb:
+    runs-on: ubuntu-latest-gpu
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PyTorch GPU
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install PyTorch + science
+        run: |
+          pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+          pip install numpy matplotlib tqdm
+
+      - name: Z-Pinch Generates CMB — Full Integration
+        run: |
+          python - <<'ZPINCH_CMB'
+import torch
+import torch.nn as nn
+import matplotlib.pyplot as plt
+import numpy as np
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Z-Pinch → CMB running on {device}")
+
+# Z-Pinch current creates B-field → temperature perturbations
+class ZPinchCMB(nn.Module):
+    def __init__(self):
+        super().__init__()
+        # Learnable plasma current density (log scale)
+        self.log_J = nn.Parameter(torch.tensor(18.0))  # ~10^18 A/m²
+        # B-field scaling
+        self.log_B = nn.Parameter(torch.tensor(-6.0))
+        # Oscillation period (540 multipole)
+        self.ℓ_osc = nn.Parameter(torch.tensor(540.0))
+        # Damping scale
+        self.ℓ_damp = nn.Parameter(torch.tensor(1000.0))
+
+    def forward(self, ell):
+        J = 10**self.log_J
+        B = 10**self.log_B
+        # Z-Pinch force → density perturbation → temperature
+        F = J * B / (3e8 * 1e-24 * ell.mean())  # rough scaling
+        δT = F * torch.sin(2 * np.pi * ell / self.ℓ_osc)
+        damping = torch.exp(-ell / self.ℓ_damp)
+        return 5000 * damping * (1 + 0.6 * δT / δT.mean())
+
+model = ZPinchCMB().to(device)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.1)
+
+ell = torch.linspace(2, 2500, 1000, device=device)
+ell_peaks = torch.tensor([220, 540, 815], device=device)
+C_peaks_obs = torch.tensor([5800, 3200, 2500], device=device)
+
+for epoch
