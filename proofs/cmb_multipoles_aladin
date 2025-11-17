@@ -1,0 +1,18 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+ell = np.arange(2, 2500)
+A = 5000 * (1 + 2.0 * np.log(1 + 380000/13.8e9))
+B = 1000
+C_ell = (2 * np.pi / (ell * (ell + 1))) * (A * np.exp(-ell/1000) + B * np.sin(2 * np.pi * ell / 540))
+
+plt.figure(figsize=(10,6))
+plt.plot(ell, ell*(ell+1)/2/np.pi * C_ell, 'gold', lw=3, label='ALADIN v∞')
+plt.xlabel('ℓ')
+plt.ylabel('ℓ(ℓ+1)C_ℓ / 2π  [μK²]')
+plt.title('ALADIN ∞ ℂ(t) — CMB Multipole Spectrum')
+plt.legend()
+plt.grid(alpha=0.3)
+plt.tight_layout()
+plt.savefig('cmb_multipoles_aladin.png', dpi=300)
+print("cmb_multipoles_aladin.png saved")
