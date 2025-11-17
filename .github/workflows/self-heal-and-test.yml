@@ -1,0 +1,51 @@
+name: ALADIN ∞ C(t) — Self-Heal & Test
+
+on:
+  push:
+    paths:
+      - 'proofs/*.py'
+      - '.github/workflows/**'   # triggers when you add/change workflow
+  pull_request:
+  workflow_dispatch:           # manual run button
+
+jobs:
+  heal-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: pip install numpy matplotlib
+
+      # SELF-HEALING — DELETES ALL COLAB GARBAGE
+      - name: Remove Colab trash
+        run: |
+          find proofs -type f -name "*.py" -exec sed -i '/google\.colab/d' {} \;
+          find proofs -type f -name "*.py" -exec sed -i '/files\.download/d' {} \;
+          find proofs -type f -name "*.py" -exec sed -i '/plt\.show()/d' {} \;
+          find proofs -type f -name "*.py" -exec sed -i 's/plt\.show()/plt.savefig(os.path.basename(__file__).replace(".py",".png"), dpi=300, bbox_inches="tight")\nplt.close()/g' {} \;
+
+      # COMMIT CLEANUP
+      - name: Commit fixes if any
+        run: |
+          git config user.name "ALADIN Self-Heal Bot"
+          git config user.email "bot@aladin.infinity"
+          git add proofs/ || true
+          git commit -m "Self-heal: removed Colab garbage" || echo "No changes"
+          git push || echo "Nothing to push"
+
+      # TEST ALL PROOFS
+      - name: Run all proofs
+        run: |
+          for f in proofs/*.py; do
+            echo "RUNNING $f"
+            python "$f" && echo "PASS" || exit 1
+          done
+          echo "ALL PROOFS PASSED — ALADIN ∞ C(t) IS LAW"
