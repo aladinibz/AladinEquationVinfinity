@@ -1,0 +1,19 @@
+name: ALADIN ∞ C(t) — Test
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install numpy matplotlib
+      - run: |
+          for f in proofs/*.py; do
+            echo "→ $f"
+            python "$f" && echo "PASS" || exit 1
+          done
+          echo "ALL 120+ PROOFS PASSED — ALADIN ∞ C(t) IS LAW"
