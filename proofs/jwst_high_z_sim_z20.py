@@ -32,7 +32,7 @@ plt.xscale('log'); plt.xlabel('z'); plt.ylabel('H(z)')
 plt.title('Simulated JWST High-z — Aladin v∞ (z=20)')
 plt.legend(); plt.grid(alpha=0.3)
 plt.tight_layout()
-plt.savefig('jwst_high_z_sim_z20.png', dpi=300)
+plt.savefig('jwst_high_z_sim_z20.png', dpi=300, bbox_inches='tight')
 plt.close()
 
 print("JWST sim z=20 saved: CSV + plot")
