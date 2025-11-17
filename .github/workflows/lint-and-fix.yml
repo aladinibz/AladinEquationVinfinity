@@ -1,0 +1,49 @@
+name: Lint & Auto-Fix (Nobel Shield v2)
+
+on:
+  push:
+    paths:
+      - 'proofs/*.py'
+  pull_request:       # Also runs on PRs (extra safety)
+
+jobs:
+  lint-and-fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Install Python + linters
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install ruff (fastest linter + auto-fixer)
+        run: pip install ruff
+
+      # AUTO-FIX + LINT with ruff (replaces flake8, black, isort, etc.)
+      - name: Run ruff — fix + check
+        run: |
+          ruff check proofs --fix                     # Auto-fixes imports, style, unused vars, etc.
+          ruff format proofs                          # Enforces perfect formatting (black-style)
+
+      # Remove Colab garbage (your personal nuclear shield)
+      - name: Remove google.colab & plt.show()
+        run: |
+          find proofs -name "*.py" -exec sed -i '/from google.colab/d' {} \;
+          find proofs -name "*.py" -exec sed -i '/files.download/d' {} \;
+          find proofs -name "*.py" -exec sed -i '/plt.show()/d' {} \;
+          find proofs -name "*.py" -exec sed -i 's/plt.show()/plt.savefig(os.path.basename(__file__).replace(".py",".png"), dpi=300, bbox_inches="tight")\nplt.close()/g' {} \;
+
+      # Commit all fixes (ruff + Colab removal)
+      - name: Commit & push fixes
+        run: |
+          git config user.name "Nobel Bot"
+          git config user.email "nobel@aladin.infinity"
+          git add .
+          git commit -m "Nobel Bot: lint, format, remove Colab — Aladin v∞ v6.0" || echo "Nothing to fix"
+          git push || echo "No changes"
+
+      # Final check — fail if still bad code
+      - name: Final lint check (fails CI if unclean)
+        run: ruff check proofs --exit-non-zero-on-fix
