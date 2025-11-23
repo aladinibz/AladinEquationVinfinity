@@ -1,0 +1,14 @@
+cff-version: 1.2.0
+message: "If you use this work, please cite it as below."
+authors:
+  - family-names: "Bucurenciu"
+    given-names: "Mihai Alexandru"
+    name-particle: ""
+    name-suffix: ""
+    orcid: "https://orcid.org/0009-0006-4457-557X"
+    alias: "Aladin"
+title: "ALADIN ∞ ℂ(t): The Final Law of Physics"
+version: 1.0.0
+doi: 10.5281/zenodo.17636124
+date-released: 2025-11-23
+url: "https://github.com/aladinibz/AladinEquationVinfinity"
