@@ -1,0 +1,20 @@
+name: aladin-infinity
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - numpy
+  - matplotlib
+  - scipy
+  - pandas
+  - astropy
+  - jupyter
+  - seaborn
+  - h5py
+  - tqdm
+  - pip
+  - pip:
+      - corner
+      - getdist
+      - emcee
