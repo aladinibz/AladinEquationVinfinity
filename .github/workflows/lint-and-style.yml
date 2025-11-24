@@ -6,10 +6,20 @@ on: [push, pull_request]
 jobs:
   lint:
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-      - run: pip install black flake8
-      - run: black --check --diff proofs/ scripts/ || echo "Some files need formatting — it's OK"
-      - run: flake8 proofs/ scripts/ --max-line-length=99 || echo "Long lines in physics code — normal"
+
+      # THIS IS THE REAL FIX — WE TELL GITHUB THE EXACT VERSION
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install black & flake8
+        run: pip install black flake8
+
+      - name: Check formatting with black
+        run: black --check --diff proofs/ scripts/
+
+      - name: Check style with flake8
+        run: flake8 proofs/ scripts/ --max-line-length=99
