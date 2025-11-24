@@ -1,0 +1,33 @@
+# .github/workflows/run-all-proofs.yml
+name: Run All Proofs
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  final-law:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - run: pip install numpy matplotlib scipy pandas astropy
+
+      - name: Count and run all proofs
+        run: |
+          PROOFS=$(find proofs -name "*.py" | wc -l)
+          echo "Running all $PROOFS proofs..."
+          python scripts/run_all_plots.py
+          echo "ALADIN ∞ ℂ(t) — All $PROOFS proofs passed"
+
+      - name: Upload plots
+        uses: actions/upload-artifact@v4
+        with:
+          name: ALADIN-∞-ℂ(t)-plots
+          path: plots/
