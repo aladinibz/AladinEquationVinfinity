@@ -13,10 +13,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Update proof & plot count in README
+      - name: Update proof & plot count
         run: |
-          PROOFS=$(find proofs -name "*.py" | wc -l)
-          PLOTS=$(find plots -name "*.png" | wc -l)
+          PROOFS=$(find proofs -name "*.py" | wc -l | tr -d ' ')
+          PLOTS=$(find plots -name "*.png" | wc -l | tr -d ' ')
           sed -i "s/[0-9]\+ proofs/$PROOFS proofs/g" README.md
           sed -i "s/[0-9]\+ plots/$PLOTS plots/g" README.md
 
