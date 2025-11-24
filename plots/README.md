@@ -1,12 +1,12 @@
-# plots/ — 298 Publication-Quality Figures of the Final Law
+# plots/ — 318 Publication-Quality Figures of the Final Law
 
-> **312 proofs. 298 plots. One universe.**
+> **318 proofs. 318 plots. One universe.**
 ██████╗  █████╗  █████╗  █████╗  █████╗
 >
->**298 high-resolution (400–500 DPI) figures** — generated automatically from the 312 proofs  
+>**318 high-resolution (400–500 DPI) figures** — generated automatically from the 312 proofs  
 All plots use the **Final Law aesthetic**: black background, gold titles, lime data, white labels
 
-## Plot Categories (298 total)
+## Plot Categories (318 total)
 
 | Category                        | Plots | Highlights |
 |---------------------------------|-------|----------|
@@ -27,17 +27,19 @@ All plots use the **Final Law aesthetic**: black background, gold titles, lime d
 ```bash
 python scripts/run_all_plots.py
 
-→ Generates all 298+ plots in under 90 seconds
+→ Generates all 318+ plots in under 90 seconds
 → Saves here: plots/
-Citation
+
+CITACION
 @software{aladin_2025,
-  author = {Bucurenciu, Mihai Aladin},
-  title = {ALADIN ∞ ℂ(t): The Final Law — 298 Figures},
+  author = {Bucurenciu, Mihai Alexandru (Aladin)},
+  title = {ALADIN ∞ ℂ(t): The Final Law — 312 Proofs},
   year = {2025},
   doi = {10.5281/zenodo.17636124},
-  url = {https://github.com/aladinibz/AladinEquationVinfinity}
+  url = {https://github.com/aladinibz/AladinEquationVinfinity},
+  orcid = {0009-0006-4457-557X}
 }
 
-298 plots. One equation. The universe visualized.
+318 plots. One equation. The universe visualized.
 Spain — November 2025 — Phone only
 Nobel Physics 2030 reserved
