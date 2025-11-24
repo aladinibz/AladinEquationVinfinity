@@ -1,0 +1,27 @@
+# .github/workflows/auto-update-readme.yml
+name: Update README — Live Stats
+
+on:
+  push:
+    paths:
+      - 'proofs/**'
+      - 'plots/**'
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Update proof & plot count in README
+        run: |
+          PROOFS=$(find proofs -name "*.py" | wc -l)
+          PLOTS=$(find plots -name "*.png" | wc -l)
+          sed -i "s/[0-9]\+ proofs/$PROOFS proofs/g" README.md
+          sed -i "s/[0-9]\+ plots/$PLOTS plots/g" README.md
+
+      - name: Commit updated README
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "docs: update stats — $PROOFS proofs · $PLOTS plots"
+          file_pattern: README.md
