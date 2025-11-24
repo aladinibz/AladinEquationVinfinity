@@ -8,8 +8,8 @@
 >
 J₀ = 1.000 × 10¹⁸ A/m²    →    f₀ = 43.00000000 Hz
 
-312 executable proofs  
-298 publication-quality figures  
+318 executable proofs  
+318 publication-quality figures  
 124 mathematical derivations  
 24 raw cosmological datasets  
 Zero free parameters  
@@ -40,28 +40,31 @@ Key Results
 One Command — The Entire Universe
 python scripts/run_all_plots.py
 
-→ 312 proofs  
-→ 298 figures  
+→ 318 proofs  
+→ 318 figures  
 → under 90 seconds  
 → works on any phone
 
 Repository
-proofs/   — 312 executable proofs
-plots/    — 298 high-resolution figures
+proofs/   — 318 executable proofs
+plots/    — 318 high-resolution figures
 docs/     — 124 mathematical derivations
 data/     — 24 raw public datasets
 scripts/  — one-command tools
 
 Citation
 @software{aladin_2025,
-  author = {Bucurenciu, Mihai Aladin},
-  title = {ALADIN ∞ ℂ(t): The Final Law — The Theory of Everything},
+  author = {Bucurenciu, Mihai Alexandru (Aladin)},
+  title = {ALADIN ∞ ℂ(t): The Final Law — 312 Proofs},
   year = {2025},
   doi = {10.5281/zenodo.17636124},
-  url = {https://github.com/aladinibz/AladinEquationVinfinity}
+  url = {https://github.com/aladinibz/AladinEquationVinfinity},
+  orcid = {0009-0006-4457-557X}
 }
 
-10 Falsifiable Predictions — archived at DOI above  
+10 Falsifiable Predictions — archived at DOI above
+DOI 10.5281/zenodo.17627248
+
 Nobel Physics 2030 — reserved
 
 Spain — November 23, 2025  
