@@ -31,14 +31,13 @@
 ```bash
 python scripts/run_all_plots.py
 
-→ 312 proofs → 298+ figures → < 90 seconds
-Citation
 @software{aladin_2025,
-  author = {Bucurenciu, Mihai Aladin},
+  author = {Bucurenciu, Mihai Alexandru (Aladin)},
   title = {ALADIN ∞ ℂ(t): The Final Law — 312 Proofs},
   year = {2025},
   doi = {10.5281/zenodo.17636124},
-  url = {https://github.com/aladinibz/AladinEquationVinfinity}
+  url = {https://github.com/aladinibz/AladinEquationVinfinity},
+  orcid = {0009-0006-4457-557X}
 }
 
 ΛCDM superseded • String theory obsolete • Physics complete
