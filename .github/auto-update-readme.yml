@@ -13,10 +13,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Update proof & plot count
+      # THIS IS THE REAL FIX — WE TELL GITHUB THE EXACT VERSION
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Update proof & plot count in README
         run: |
-          PROOFS=$(find proofs -name "*.py" | wc -l | tr -d ' ')
-          PLOTS=$(find plots -name "*.png" | wc -l | tr -d ' ')
+          PROOFS=$(find proofs -type f -name "*.py" | wc -l | xargs)
+          PLOTS=$(find plots -type f -name "*.png" | wc -l | xargs)
+          echo "Found $PROOFS proofs and $PLOTS plots"
+          
           sed -i "s/[0-9]\+ proofs/$PROOFS proofs/g" README.md
           sed -i "s/[0-9]\+ plots/$PLOTS plots/g" README.md
 
