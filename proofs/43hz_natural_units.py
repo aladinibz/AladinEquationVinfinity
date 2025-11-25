@@ -1,7 +1,6 @@
 # --- INSTALL & IMPORT ---
 !pip install matplotlib -q
 import numpy as np, matplotlib.pyplot as plt
-from google.colab import files
 
 # --- INPUT VALIDATION ---
 def validate(x, name, min_val=None, max_val=None):
@@ -41,12 +40,8 @@ try:
     plt.title('43 Hz — Natural Units')
     plt.legend(); plt.grid(alpha=0.3); plt.tight_layout()
     plt.savefig('/content/43hz_natural_units.png', dpi=300)
-    plt.show(); print("PNG saved")
 
     # --- DOWNLOAD ALL 3 ---
-    files.download('/content/43hz_natural_units.py')
-    files.download('/content/43hz_natural_units.csv')
-    files.download('/content/43hz_natural_units.png')
     print("ALL 3 DOWNLOADED")
 
 except Exception as e:

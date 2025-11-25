@@ -21,6 +21,5 @@ plt.title('Aladin v∞ — BAO Scale')
 plt.grid(alpha=0.3)
 plt.tight_layout()
 plt.savefig('/content/bao_scale.png', dpi=300)
-plt.show()
 
 print(f"r_d = {rd:.0f} Mpc, θ = {theta:.4f} rad — PASS")

@@ -31,6 +31,5 @@ plt.legend()
 plt.grid(alpha=0.3)
 plt.tight_layout()
 plt.savefig('/content/bullet_cluster.png', dpi=300)
-plt.show()
 
 print("Bullet Cluster: offset = 750 kpc — χ²_red = 0.57 — PASS")

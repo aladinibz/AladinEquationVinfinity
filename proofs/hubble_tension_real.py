@@ -1,6 +1,5 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from google.colab import files
 
 # REAL DATA — DESI DR1 BAO + SH0ES
 z = np.array([0.51, 0.70, 0.85, 1.13, 0.07, 0.15, 0.8, 1.5])

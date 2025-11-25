@@ -14,6 +14,5 @@ plt.title('Aladin v∞ — Neutrino Osc Test')
 plt.grid(alpha=0.3)
 plt.tight_layout()
 plt.savefig('/content/neutrino_osc.png', dpi=300)
-plt.show()
 
 print("Neutrino: Δm² = 7.5e-5 — PASS")

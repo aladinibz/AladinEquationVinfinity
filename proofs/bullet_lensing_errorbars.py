@@ -65,7 +65,6 @@ plt.title('Bullet Cluster — Aladin v∞ (No DM)\nχ²_red = 0.62 | Offset = 1.
 plt.legend()
 plt.tight_layout()
 plt.savefig('plots/bullet_lensing_errorbars.png', dpi=300, bbox_inches='tight')
-plt.show()
 
 print("BULLET CLUSTER SIMULATED WITH ERROR BARS")
 print("χ²_red = 0.62 — EXCELLENT FIT")

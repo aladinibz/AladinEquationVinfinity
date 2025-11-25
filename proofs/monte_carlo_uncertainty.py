@@ -33,7 +33,6 @@ ax2.set_title('H_Maria(t=0) (10k runs)')
 ax2.set_xlabel('km/s/Mpc')
 plt.tight_layout()
 plt.savefig('monte_carlo_uncertainty.png', dpi=300)
-plt.show()
 
 print(f"Mass: {np.mean(results['mass']):.2e} ± {np.std(results['mass']):.2e} M⊙")
 print(f"H: {np.mean(results['H']):.1f} ± {np.std(results['H']):.1f} km/s/Mpc")

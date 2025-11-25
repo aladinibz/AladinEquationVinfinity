@@ -4,7 +4,6 @@
 # --- IMPORTS ---
 import numpy as np
 import matplotlib.pyplot as plt
-from google.colab import files
 
 # --- REAL DATA (DESI + SH0ES) ---
 z = np.array([0.8, 1.5, 0.07, 0.15])
@@ -42,7 +41,5 @@ plt.tight_layout()
 
 # --- SAVE + DOWNLOAD ---
 plt.savefig('/content/chi2_fitting_real.png', dpi=300, bbox_inches='tight')
-plt.show()
-files.download('/content/chi2_fitting_real.png')
 
 print("chi2_fitting_real.png saved + downloaded")

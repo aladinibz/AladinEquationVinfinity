@@ -29,7 +29,6 @@ plt.legend()
 plt.grid(True, alpha=0.3)
 plt.tight_layout()
 plt.savefig('/content/bbn_he4_sim.png', dpi=300)
-plt.show()
 
 print(f"Final He-4 = {Y_p[-1]:.3f}")
 print(f"Observed He-4 = {Y_p_obs:.3f}")

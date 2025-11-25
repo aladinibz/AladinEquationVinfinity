@@ -48,6 +48,5 @@ plt.legend()
 plt.grid(True, alpha=0.3)
 plt.tight_layout()
 plt.savefig('/content/z_pinch_optimized.png', dpi=300)
-plt.show()
 
 print(f"Max density: {np.max(n_e)/n0:.1e} × n₀")

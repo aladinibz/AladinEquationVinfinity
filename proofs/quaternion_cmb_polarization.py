@@ -4,7 +4,6 @@
 # --- IMPORTS ---
 import numpy as np
 import matplotlib.pyplot as plt
-from google.colab import files
 
 # --- QUATERNION E/B MODES ---
 ell = np.arange(2, 1000, 10)
@@ -27,11 +26,8 @@ plt.tight_layout()
 
 png_path = '/content/quaternion_cmb_polarization.png'
 plt.savefig(png_path, dpi=300)
-plt.show()
 print(f"PNG saved: {png_path}")
 
 # --- DOWNLOAD .py + .png ---
-files.download('/content/quaternion_cmb_polarization.py')
-files.download(png_path)
 
 print("quaternion_cmb_polarization.py + .png — DOWNLOADED")

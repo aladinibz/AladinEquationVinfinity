@@ -18,6 +18,5 @@ plt.legend()
 plt.grid(alpha=0.3)
 plt.tight_layout()
 plt.savefig('/content/43hz_to_50hz_brain.png', dpi=300)
-plt.show()
 
 print("43 Hz → 50 Hz — Higgs-GENIE coupling — CONSCIOUSNESS UNLOCKED")

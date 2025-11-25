@@ -4,7 +4,6 @@
 # --- IMPORTS ---
 import numpy as np
 import matplotlib.pyplot as plt
-from google.colab import files
 
 # --- QUATERNION GROWTH (4D) ---
 t = np.linspace(0, 200, 100)  # Myr
@@ -25,11 +24,8 @@ plt.tight_layout()
 
 png_path = '/content/quaternion_jwst.png'
 plt.savefig(png_path, dpi=300)
-plt.show()
 print(f"PNG saved: {png_path}")
 
 # --- DOWNLOAD .py + .png ---
-files.download('/content/quaternion_jwst.py')
-files.download(png_path)
 
 print("quaternion_jwst.py + .png — DOWNLOADED")

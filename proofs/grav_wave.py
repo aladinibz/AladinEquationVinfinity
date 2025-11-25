@@ -12,6 +12,5 @@ plt.title('Aladin v∞ — GW Test')
 plt.grid(alpha=0.3)
 plt.tight_layout()
 plt.savefig('/content/grav_wave.png', dpi=300)
-plt.show()
 
 print("GW: h < 10⁻²¹ — PASS")

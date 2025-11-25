@@ -47,5 +47,4 @@ plt.legend(); plt.grid(alpha=0.3); plt.tight_layout()
 
 png_path = '43hz_conversion.png'
 plt.savefig(png_path, dpi=300)
-# plt.show() is generally not included in a standalone script for saving images
 print(f"PNG saved: {png_path}")

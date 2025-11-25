@@ -4,7 +4,6 @@ import numpy as np
 import emcee
 import matplotlib.pyplot as plt
 import corner
-from google.colab import files
 
 data = {'mass': 1e9, 'cmb': 0.95, 'pinch': 10000.0, 'H': 70.0}
 sigma = {'mass': 1e8, 'cmb': 0.05, 'pinch': 1000.0, 'H': 5.0}
@@ -50,7 +49,5 @@ fig = corner.corner(
 
 # SAVE + DOWNLOAD
 plt.savefig('/content/corner_plot.png', dpi=300, bbox_inches='tight')
-plt.show()
-files.download('/content/corner_plot.png')
 
 print("corner_plot.png saved and downloaded")

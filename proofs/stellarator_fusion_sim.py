@@ -25,5 +25,4 @@ plt.tight_layout()
 
 png_path = 'stellarator_fusion_sim.png'
 plt.savefig(png_path, dpi=300)
-plt.show()
 print(f"PNG saved: {png_path}")

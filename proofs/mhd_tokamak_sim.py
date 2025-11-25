@@ -4,7 +4,6 @@
 # --- IMPORTS ---
 import numpy as np
 import matplotlib.pyplot as plt
-from google.colab import files
 
 # --- TOROIDAL GRID (R, Z) ---
 R = np.linspace(1.5, 3.5, 100)
@@ -28,11 +27,8 @@ plt.tight_layout()
 
 png_path = '/content/mhd_tokamak_sim.png'
 plt.savefig(png_path, dpi=300)
-plt.show()
 print(f"PNG saved: {png_path}")
 
 # --- DOWNLOAD .py + .png ---
-files.download('/content/mhd_tokamak_sim.py')
-files.download(png_path)
 
 print("mhd_tokamak_sim.py + .png — DOWNLOADED")

@@ -4,7 +4,6 @@
 # --- IMPORTS ---
 import numpy as np
 import matplotlib.pyplot as plt
-from google.colab import files
 
 # --- PARAMETERS ---
 H0 = 75.2
@@ -47,8 +46,5 @@ plt.tight_layout()
 
 # --- SAVE + DOWNLOAD ---
 plt.savefig('/content/desi_y2_bao_prediction.png', dpi=300, bbox_inches='tight')
-plt.show()
-files.download('/content/desi_y2_bao_prediction.png')
-files.download('/content/desi_y2_bao_prediction.py')  # Save script too
 
 print("desi_y2_bao_prediction.png + .py saved + downloaded")

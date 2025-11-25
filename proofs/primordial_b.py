@@ -13,6 +13,5 @@ plt.title('Aladin v∞ — Primordial B Test')
 plt.grid(alpha=0.3)
 plt.tight_layout()
 plt.savefig('/content/primordial_b.png', dpi=300)
-plt.show()
 
 print("Primordial B: 10⁻¹⁰ G — PASS")

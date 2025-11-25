@@ -16,6 +16,5 @@ plt.title('BBN He-4 — Fixed — 24.7%')
 plt.xlabel('Time (s)')
 plt.ylabel('Y_p')
 plt.savefig('/content/bbn_he4_fixed.png', dpi=300)
-plt.show()
 
 print(f"Final He-4 = {Y_p[-1]:.3f}")

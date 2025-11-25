@@ -4,7 +4,6 @@
 # --- IMPORTS ---
 import numpy as np
 import matplotlib.pyplot as plt
-from google.colab import files
 
 # --- Z-PINCH FORCE ---
 r = np.logspace(-2, 2, 100)
@@ -23,11 +22,8 @@ plt.tight_layout()
 # --- SAVE PNG ---
 png_path = '/content/z_pinch_force.png'
 plt.savefig(png_path, dpi=300)
-plt.show()
 print(f"PNG saved: {png_path}")
 
 # --- DOWNLOAD .py + .png ---
-files.download('/content/z_pinch_force.py')
-files.download(png_path)
 
 print("z_pinch_force.py + .png — DOWNLOADED")

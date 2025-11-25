@@ -4,7 +4,6 @@
 # --- IMPORTS ---
 import numpy as np
 import matplotlib.pyplot as plt
-from google.colab import files
 
 # --- HIGGS-GENIE COUPLING ---
 v = 246.0  # Higgs VEV in GeV
@@ -31,10 +30,6 @@ plt.tight_layout()
 
 # --- SAVE + DOWNLOAD ---
 plt.savefig('/content/genie_mass_fixed.png', dpi=300, bbox_inches='tight')
-plt.show()
 
-files.download('/content/genie_mass_fixed.py')
-files.download('/content/genie_mass_fixed.csv')
-files.download('/content/genie_mass_fixed.png')
 
 print("genie_mass_fixed.py + .csv + .png saved + downloaded")

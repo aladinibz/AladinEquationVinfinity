@@ -55,6 +55,5 @@ for i in range(ndim):
     ax.grid(alpha=0.3)
 plt.tight_layout()
 plt.savefig('trace_plot.png', dpi=300)
-plt.show()
 
 print("Trace plot saved — convergence confirmed")

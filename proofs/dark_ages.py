@@ -12,6 +12,5 @@ plt.title('Aladin v∞ — Reionization Test')
 plt.grid(alpha=0.3)
 plt.tight_layout()
 plt.savefig('/content/dark_ages.png', dpi=300)
-plt.show()
 
 print("Reionization: τ = 0.054 — PASS")

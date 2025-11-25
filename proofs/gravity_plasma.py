@@ -5,7 +5,6 @@
 # --- IMPORTS ---
 import numpy as np
 import matplotlib.pyplot as plt
-from google.colab import files
 
 # --- PLASMA STRESS-ENERGY ---
 rho = 1e-24
@@ -41,11 +40,8 @@ plt.tight_layout()
 # --- SAVE PNG ---
 png_path = '/content/gravity_plasma.png'
 plt.savefig(png_path, dpi=300)
-plt.show()
 print(f"PNG saved: {png_path}")
 
 # --- DOWNLOAD .py + .png ---
-files.download('/content/gravity_plasma.py')
-files.download(png_path)
 
 print("gravity_plasma.py + .png — DOWNLOADED")

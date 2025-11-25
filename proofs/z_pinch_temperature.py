@@ -10,5 +10,4 @@ for _ in range(steps):
 fig,(ax1,ax2)=plt.subplots(2,1,figsize=(10,8))
 ax1.loglog(r,n_e/n0,'purple',lw=3);ax1.loglog(r,np.ones_like(r),'--',color='gray');ax1.set_ylabel('Density / n₀')
 ax2.loglog(r,T/1e6,'red',lw=3);ax2.set_xlabel('Radius (cm)');ax2.set_ylabel('T (MK)')
-ax1.set_title('Z-Pinch — 10,000× Density + 10⁷ K');plt.tight_layout();plt.savefig('/content/z_pinch_temperature.png',dpi=300);plt.show()
 print(f"Max density: {np.max(n_e)/n0:.1e}x, Max T: {np.max(T)/1e6:.1f} MK")

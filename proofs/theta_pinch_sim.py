@@ -66,7 +66,6 @@ plt.legend()
 plt.grid(True, alpha=0.3)
 plt.tight_layout()
 plt.savefig('/content/theta_pinch_sim.png', dpi=300)
-plt.show()
 
 print(f"Max density: {np.max(n_e)/n0:.1e} × n₀")
 print(f"Max temp: {np.max(T)/1e6:.1f} MK")

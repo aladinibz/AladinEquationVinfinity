@@ -15,6 +15,5 @@ plt.title('BBN D/H — Fixed — 2.5e-5')
 plt.xlabel('Time (s)')
 plt.ylabel('D/H')
 plt.savefig('/content/bbn_dh_fixed.png', dpi=300)
-plt.show()
 
 print(f"Final D/H = {D_H[-1]:.2e}")

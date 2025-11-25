@@ -20,4 +20,3 @@ plt.tight_layout()
 
 png_path = 'octonion_jwst.png'
 plt.savefig(png_path, dpi=300)
-plt.show()

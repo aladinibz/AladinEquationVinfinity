@@ -30,7 +30,6 @@ plt.legend()
 plt.grid(True, alpha=0.3)
 plt.tight_layout()
 plt.savefig('/content/cmb_full_spectrum.png', dpi=300)
-plt.show()
 
 # === χ²/dof ===
 chi2 = np.sum(((Dl_tt[np.searchsorted(l, l_data)] - Dl_tt_data) / 100)**2)

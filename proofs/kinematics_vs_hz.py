@@ -8,4 +8,3 @@ e_high = np.array([15,18,20,22,25])
 H0 = 75.2; n = 0.25; z_all = np.concatenate([z_low,z_high]); H_model = H0 * (z_all/(1+z_all))**n
 os.makedirs('plots', exist_ok=True)
 plt.figure(figsize=(10,6)); plt.errorbar(z_low,H_low,e_low,fmt='ko',capsize=5,label='DESI DR1 BAO H(z)'); plt.errorbar(z_high,H_high,e_high,fmt='rs',capsize=5,label='JWST Kinematics (σ_v)'); plt.plot(z_all,H_model,'gold',lw=3,label='Aladin v∞ H(z)'); plt.xlabel('z'); plt.ylabel('H(z)'); plt.title('H(z) vs Kinematics'); plt.legend(); plt.grid(alpha=0.3); plt.tight_layout()
-save_path = 'plots/kinematics_vs_hz.png'; plt.savefig(save_path,dpi=300); plt.show(); print(f"SAVED: {save_path}"); from google.colab import files; files.download(save_path)

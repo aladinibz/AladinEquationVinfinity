@@ -21,5 +21,4 @@ plt.tight_layout()
 # Save the plot (using a local filename for the script)
 png_filename_in_script = 'quaternion_spin.png'
 plt.savefig(png_filename_in_script, dpi=300)
-plt.show() # Keep for interactive execution of the downloaded script if desired
 print(f"PNG saved: {png_filename_in_script}")

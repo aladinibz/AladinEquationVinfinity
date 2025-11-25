@@ -18,7 +18,5 @@ plt.legend()
 plt.grid(alpha=0.3)
 plt.tight_layout()
 
-# Note: plt.savefig() and plt.show() are often handled separately
 # when running a script, but included here for completeness if desired.
 # plt.savefig('octonion_43hz.png', dpi=300)
-plt.show()

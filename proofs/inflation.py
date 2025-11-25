@@ -15,6 +15,5 @@ plt.legend()
 plt.grid(alpha=0.3)
 plt.tight_layout()
 plt.savefig('/content/inflation.png', dpi=300)
-plt.show()
 
 print("Inflation: |Ω| < 0.01 — PASS")

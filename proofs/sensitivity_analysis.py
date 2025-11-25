@@ -46,6 +46,5 @@ for i, key in enumerate(params):
 
 plt.tight_layout()
 plt.savefig('sensitivity_analysis.png', dpi=300)
-plt.show()
 
 print("Sensitivity analysis complete — saved as sensitivity_analysis.png")

@@ -1,6 +1,5 @@
 !pip install matplotlib -q
 import numpy as np, matplotlib.pyplot as plt
-from google.colab import files
 
 # --- VALIDATE ---
 def v(x, name, minv=None, maxv=None):
@@ -30,10 +29,6 @@ plt.loglog([1e-12,1e-10],[43,43],'c',lw=2)
 plt.scatter([k_ev],[f],c='gold',s=80)
 plt.xlabel('k (eV)'); plt.ylabel('f (Hz)'); plt.title('43 Hz')
 plt.grid(alpha=0.3); plt.tight_layout()
-plt.savefig('/content/43hz_conversion_full.png', dpi=300); plt.show()
 
 # --- DOWNLOAD ALL 3 ---
-files.download('/content/43hz_conversion_full.py')
-files.download('/content/43hz_conversion_full.csv')
-files.download('/content/43hz_conversion_full.png')
 print("ALL 3 DOWNLOADED")

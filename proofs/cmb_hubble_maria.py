@@ -26,6 +26,5 @@ plt.tight_layout()
 
 # Save
 plt.savefig('cmb_hubble_maria.png', dpi=300, bbox_inches='tight')
-plt.show()
 
 print("H_Maria(t) plot saved as cmb_hubble_maria.png")

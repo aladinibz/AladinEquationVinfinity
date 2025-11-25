@@ -18,6 +18,5 @@ plt.legend()
 plt.grid(alpha=0.3)
 plt.tight_layout()
 plt.savefig('/content/goes_43hz_fft.png', dpi=300)
-plt.show()
 
 print("43 Hz — 6th harmonic — CONFIRMED")

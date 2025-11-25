@@ -4,7 +4,6 @@
 # --- IMPORTS ---
 import numpy as np
 import matplotlib.pyplot as plt
-from google.colab import files
 
 # --- Z-PINCH PARAMETERS ---
 J = 1e18    # A/m²
@@ -58,10 +57,6 @@ plt.tight_layout()
 
 # --- SAVE + DOWNLOAD ---
 plt.savefig('/content/43hz_k_from_jxb.png', dpi=300, bbox_inches='tight')
-plt.show()
 
-files.download('/content/43hz_k_from_jxb.py')
-files.download('/content/43hz_k_from_jxb.csv')
-files.download('/content/43hz_k_from_jxb.png')
 
 print("43hz_k_from_jxb.py + .csv + .png saved + downloaded")

@@ -14,4 +14,3 @@ plt.text(0, m_psi/2, f'{m_psi:.2f} GeV', ha='center', va='center', color='black'
 plt.grid(alpha=0.3)
 plt.tight_layout()
 plt.savefig('/content/m_psi_plasma.png', dpi=300)
-plt.show()

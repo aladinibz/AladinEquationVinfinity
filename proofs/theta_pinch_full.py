@@ -4,7 +4,6 @@
 # --- IMPORTS ---
 import numpy as np
 import matplotlib.pyplot as plt
-from google.colab import files
 
 # --- THETA-PINCH FORCE ---
 r = np.logspace(-2, 2, 100)
@@ -23,11 +22,8 @@ plt.tight_layout()
 # --- SAVE PNG ---
 png_path = '/content/theta_pinch_full.png'
 plt.savefig(png_path, dpi=300, bbox_inches='tight')
-plt.show()
 print(f"PNG SAVED: {png_path}")
 
 # --- DOWNLOAD .py + .png ---
-files.download('/content/theta_pinch_full.py')
-files.download(png_path)
 
 print("theta_pinch_full.py + .png — DOWNLOADED")
