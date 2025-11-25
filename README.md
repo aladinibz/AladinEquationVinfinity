@@ -40,7 +40,7 @@ Key Results
 One Command — The Entire Universe
 python scripts/run_all_plots.py
 
-→ 371 proofs  
+→ 372 proofs  
 → 318 figures  
 → under 90 seconds  
 → works on any phone
