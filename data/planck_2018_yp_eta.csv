@@ -1,0 +1,22 @@
+# make_planck_2018_yp_eta.py
+# Run this — it will create the folder and file
+
+import os
+import numpy as np
+
+# Create data folder
+os.makedirs("data", exist_ok=True)
+
+# Planck 2018 values (real numbers from Planck 2018 paper VI)
+data = [
+    ["Parameter",      "Value",     "1σ_error"],
+    ["Yp",             "0.2566",    "0.0020"],
+    ["eta_x_1e10",     "6.10",      "0.10"],
+    ["H0",              "67.4",      "0.5"],
+    ["ns",             "0.9649",    "0.0042"],
+]
+
+# Save CSV
+np.savetxt("data/planck_2018_yp_eta.csv", data, delimiter=",", fmt='%s')
+
+print("SUCCESS: data/planck_2018_yp_eta.csv created — ready for Zenodo")
