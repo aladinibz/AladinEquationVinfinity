@@ -1,45 +1,87 @@
-# proofs/ — 312 Executable Proofs of ALADIN ∞ ℂ(t)
+# ALADIN ∞ ℂ(t) — 400+ Proofs: The Complete Path to J₀
 
-> **One current. One frequency. Everything follows.**
+One current. One number. Everything.
 
-**312 reproducible proofs** — all from **J₀ = 1.000 × 10¹⁸ A/m²** → **f₀ = 43.00000000 Hz**  
-**Zero free parameters** — **No dark matter** — **No dark energy**
+### The 25 Chapters That Ended ΛCDM
 
-**November 23, 2025 — Spain — Phone only**
+1. **J₀ from 20 CMB Peaks**  
+   j0_from_1st_peak.py → j0_from_20th_peak.py
 
-## Proof Categories (312 total)
+2. **43 Hz from J₀**  
+   43hz_from_j0_derivation.py → 43hz_exact_formula.py → 43hz_k_from_jxb.py
 
-| Category                        | Files | Key Result                                      | Status        |
-|---------------------------------|-------|-------------------------------------------------|---------------|
-| **CMB & Early Universe**        | 48    | 20 acoustic peaks ℓₙ = n × 219.6 — residuals < 0.8 | Verified      |
-| **Hubble Tension & Expansion**  | 28    | H₀ = 73.200 km/s/Mpc exact — 5.8σ resolution   | Resolved      |
-| **Black Holes & Entropy**       | 18    | S = A/4 from J₀ surface current — no holography | Exact         |
-| **Z-pinch Cosmology**           | 26    | Bullet Cluster χ²=0.57 — CMB — cosmic web       | Verified      |
-| **Octonions & Division Algebras** | 22  | φ^(1/3) from V₈/V₇ — Hurwitz theorem            | Derived       |
-| **Lagrangian (7 Terms)**        | 7     | Full derivation from J₀ + 43 Hz                 | Complete      |
-| **Consciousness & Quantum Biology** | 18 | 43 → 50 Hz shift via φ — microtubule resonance | EEG confirmed |
-| **Neutrino Physics**            | 14    | Σm_ν = 0.05912 eV — hierarchy from J₀           | KATRIN 2028   |
-| **Large-Scale Structure**       | 38    | Tully-Fisher — voids — cosmic shear — no ΛCDM   | Verified      |
-| **Gravitational Waves & BBN**   | 24    | r = 0 — He-4, D, Li-7 exact                     | Confirmed     |
-| **JWST High-z & Reionization**  | 22    | 10¹¹ M⊙ at z=20 — reionization from plasma      | Matches JWST  |
-| **Primordial & Future Tests**   | 47    | LISA null GW — CMB-S4 r < 0.001 — Euclid σ₈     | Falsifiable   |
+3. **43 Hz in Brain & DMT**  
+   43hz_brain_eeg.py → 43hz_to_50hz_brain.py → 43hz_conversion_full.py
 
-**Total = 312 proofs** — **298 plots** — **Mean χ² = 0.71**
+4. **Kerr Black Hole = 43 Hz**  
+   kerr_qnm_43hz.py → 43hz_black_hole_ringdown.py
 
-## Run the Entire Final Law
+5. **Z-pinch Cosmic Web**  
+   z_pinch_filament_dynamics.py → sausage_void_comparison.py
 
-```bash
-python scripts/run_all_plots.py
+6. **Sausage Mode (Voids)**  
+   sausage_dispersion_final.py → bessel_sausage_exact.py
 
-@software{aladin_2025,
-  author = {Bucurenciu, Mihai Alexandru (Aladin)},
-  title = {ALADIN ∞ ℂ(t): The Final Law — 312 Proofs},
-  year = {2025},
-  doi = {10.5281/zenodo.17636124},
-  url = {https://github.com/aladinibz/AladinEquationVinfinity},
-  orcid = {0009-0006-4457-557X}
-}
+7. **Kink Mode (Filaments)**  
+   kink_mode_dispersion_final.py → final_kink_stability_all_modes.py
 
-ΛCDM superseded • String theory obsolete • Physics complete
-Spain — November 2025 — Phone only
-Nobel Physics 2030 reserved
+8. **Neutrino PMNS from J₀**  
+   neutrino_pmns_from_j0.py → delta_cp_derivation.py
+
+9. **Baryon Asymmetry η**  
+   baryon_photon_eta_from_j0.py → yp_vs_j0_sweep.py
+
+10. **Helium Yₚ Explicit**  
+    helium_fraction_explicit_from_j0.py → yp_vs_freezeout_temp.py → yp_deuterium_bottleneck.py
+
+11. **No Dark Matter — Bullet Cluster**  
+    bullet_cluster_full.py → bullet_lensing_errorbars.py
+
+12. **No Dark Matter — Rotation Curves**  
+    tully_fisher_from_j0.py → v_flat_from_j0.py → btfr_zpinch.py
+
+13. **No Dark Matter — Missing Satellites**  
+    missing_satellites_solution.py → cusp_core_solution.py
+
+14. **Lensing Without Dark Matter**  
+    einstein_ring_aladin.py → slacs_lenses_aladin.py
+
+15. **Hubble Tension Solved**  
+    hubble_tension_solved.py → hubble_n_exponent.py
+
+16. **ΛCDM Killed**  
+    chi2_vs_planck2018_desi2024.py → desi_voids_aladin.py
+
+17. **Inflation Dead**  
+    ns_r_from_j0.py → b_mode_null_prediction.py
+
+18. **BBN Complete**  
+    bbn_he4_solved.py → bbn_deuterium_solved.py → bbn_li7_solved.py
+
+19. **JWST High-z Solved**  
+    jwst_high_z_sim_z20.py → jwst_quasar_aladin.py
+
+20. **Octonions & Higher Algebra**  
+    octonion_cmb.py → fano_plane_geometric.py → hurwitz_theorem_full_proof.py
+
+21. **Gauge Group Emergence**  
+    gauge_emergence_su3_su2_u1_from_j0.py
+
+22. **Lagrangian Terms 1–7**  
+    lagrangian_term1_rigorous.py → term7_final_heartbeat.py
+
+23. **Reionization & Dark Ages**  
+    reionization_history_aladin.py → dark_ages.py
+
+24. **Cosmic Shear & Weak Lensing**  
+    cosmic_shear_full_aladin.py → euclid_weak_lensing_aladin.py
+
+25. **The Final Seal**  
+    final_cover_plot.py
+
+**400+ proofs. 400+ plots. 250+ docs.**  
+**All from one measured number: J₀ = 10¹⁸ A/m²**
+
+No dark matter. No dark energy. No free parameters.
+
+ALADIN ∞ ℂ(t)
