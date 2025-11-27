@@ -3,7 +3,7 @@
 [![Repo size](https://img.shields.io/github/repo-size/aladinibz/AladinEquationVinfinity?color=44cc11&label=Repo%20size)](https://github.com/aladinibz/AladinEquationVinfinity)
 [![Stars](https://img.shields.io/github/stars/aladinibz/AladinEquationVinfinity?style=social)](https://github.com/aladinibz/AladinEquationVinfinity/stargazers)
 [![Forks](https://img.shields.io/github/forks/aladinibz/AladinEquationVinfinity?style=social)](https://github.com/aladinibz/AladinEquationVinfinity/network/members)
-[![DOI](https://img.shields.io/badge/Zenodo-17729128-blue?logo=zenodo)](https://doi.org/10.5281/zenodo.17729128)
+[![Paper](https://img.shields.io/badge/DOI-Paper_10.5281/zenodo.17727740-blue?logo=zenodo)](https://doi.org/10.5281/zenodo.17727740)
 [![Run in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/aladinibz/AladinEquationVinfinity/blob/main/term7_final_heartbeat.py)
 [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/aladinibz/AladinEquationVinfinity/main?labpath=term7_final_heartbeat.py)
 [![43 Hz](https://img.shields.io/badge/43_Hz-Heartbeat-ff0066.svg)](https://github.com/aladinibz/AladinEquationVinfinity/blob/main/term7_final_heartbeat.py)
