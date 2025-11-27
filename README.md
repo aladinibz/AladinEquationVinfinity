@@ -4,6 +4,7 @@
 [![Last commit](https://img.shields.io/github/last-commit/aladinibz/AladinEquationVinfinity/main?color=ff69b4&label=Last%20update)](https://github.com/aladinibz/AladinEquationVinfinity/commits/main)
 [![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.17729128-blue)](https://doi.org/10.5281/zenodo.17729128)
 [![Run in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/aladinibz/AladinEquationVinfinity/blob/main/term7_final_heartbeat.py)
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/aladinibz/AladinEquationVinfinity/main?labpath=term7_final_heartbeat.py)
 [![43 Hz](https://img.shields.io/badge/43_Hz-Heartbeat-ff0066.svg)](https://github.com/aladinibz/AladinEquationVinfinity/blob/main/term7_final_heartbeat.py)
 
 # ALADIN ∞ ℂ(t) — The Final Law  
