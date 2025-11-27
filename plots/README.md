@@ -1,45 +1,72 @@
-# plots/ — 318 Publication-Quality Figures of the Final Law
+# ALADIN ∞ ℂ(t) — 400+ Plots: The Complete 8-Month Journey to J₀
 
-> **318 proofs. 318 plots. One universe.**
-██████╗  █████╗  █████╗  █████╗  █████╗
->
->**318 high-resolution (400–500 DPI) figures** — generated automatically from the 312 proofs  
-All plots use the **Final Law aesthetic**: black background, gold titles, lime data, white labels
+**One current. One number. Everything.**
 
-## Plot Categories (318 total)
+### The 20 Chapters That Killed Dark Matter
 
-| Category                        | Plots | Highlights |
-|---------------------------------|-------|----------|
-| CMB Power Spectrum              | 48    | 20 acoustic peaks — residuals < 0.8 |
-| Hubble Tension                  | 28    | H₀ = 73.200 km/s/Mpc — SH0ES exact match |
-| Black Hole Entropy              | 18    | S = A/4 over 10⁷ orders of mass |
-| Z-pinch Cosmology               | 26    | Bullet Cluster χ²=0.57 — cosmic web filaments |
-| Octonions & Golden Ratio        | 22    | φ^(1/3) from V₈/V₇ — Fano plane geometry |
-| Consciousness Resonance         | 18    | 43 → 50 Hz shift — microtubule 43 Hz eigenmode |
-| Lagrangian Evolution            | 14    | 7 terms visualized — term6 information preservation |
-| Neutrino Mass & Oscillation     | 14    | Σm_ν = 0.05912 eV — PMNS matrix from J₀ |
-| Large-Scale Structure           | 38    | Tully-Fisher — voids — cosmic shear — no dark matter |
-| JWST High-Redshift              | 22    | z=20 galaxies — 10¹¹ M⊙ at 150 Myr |
-| Primordial Predictions          | 50    | r = 0 — σ₈ = 0.78 — LISA null GW background |
+1. **J₀ from CMB Peaks**  
+   j0_from_1st_peak.png → j0_from_20th_peak.png (20 independent peaks → J₀ = 10¹⁸ A/m²)
 
-## How to Regenerate All Plots
+2. **43 Hz Discovery**  
+   43hz_from_j0_derivation.png → 43hz_exact_formula.png → kerr_qnm_43hz.png
 
-```bash
-python scripts/run_all_plots.py
+3. **43 Hz in Consciousness**  
+   43hz_brain.png → 43hz_to_50hz_brain.png → consciousness_to_universe_43hz.png
 
-→ Generates all 318+ plots in under 90 seconds
-→ Saves here: plots/
+4. **Z-pinch Cosmic Web**  
+   z_pinch_filament_dynamics.png → sausage_void_comparison.png → cosmic_web_filaments.png
 
-CITACION
-@software{aladin_2025,
-  author = {Bucurenciu, Mihai Alexandru (Aladin)},
-  title = {ALADIN ∞ ℂ(t): The Final Law — 312 Proofs},
-  year = {2025},
-  doi = {10.5281/zenodo.17636124},
-  url = {https://github.com/aladinibz/AladinEquationVinfinity},
-  orcid = {0009-0006-4457-557X}
-}
+5. **Sausage & Kink Modes**  
+   sausage_dispersion_final.png → kink_mode_dispersion_final.png → final_kink_stability_all_modes.png
 
-318 plots. One equation. The universe visualized.
-Spain — November 2025 — Phone only
-Nobel Physics 2030 reserved
+6. **Void Formation**  
+   void_formation_mechanisms.png → void_growth_rates_simulation.png
+
+7. **Neutrino PMNS from J₀**  
+   neutrino_pmns_from_j0.png → delta_cp_derivation.png
+
+8. **Baryon Asymmetry η**  
+   baryon_photon_eta_from_j0.png → yp_vs_j0_sweep.png
+
+9. **Helium Yₚ Explicit**  
+   helium_fraction_explicit_from_j0.png → yp_vs_freezeout_temp.png → yp_deuterium_bottleneck.png
+
+10. **No Dark Matter**  
+    bullet_cluster.png → missing_satellites_solution.png → cusp_core_solution.png
+
+11. **Rotation Curves**  
+    tully_fisher_from_j0.png → rotation_curve_from_bfield.png → v_flat_from_j0.png
+
+12. **Lensing Without Dark Matter**  
+    einstein_ring_aladin.png → bullet_lensing_errorbars.png → slacs_lenses_aladin.png
+
+13. **Hubble Tension Solved**  
+    hubble_tension_solved.png → hubble_n_exponent.png
+
+14. **ΛCDM Killed**  
+    chi2_vs_planck2018_desi2024.png → likelihood_pantheon_plus.png → desi_voids_aladin.png
+
+15. **Inflation Dead**  
+    ns_r_from_j0.png → b_mode_null_prediction.png
+
+16. **BBN Complete**  
+    bbn_he4_solved.png → bbn_deuterium_solved.png → bbn_li7_solved.png
+
+17. **High-z JWST Solved**  
+    jwst_highz.png → jwst_quasar_aladin.png → jwst_z20_outliers.png
+
+18. **Octonions & Higher Algebra**  
+    octonion_cmb.png → fano_plane_geometric.png → hurwitz_theorem_full_proof.png
+
+19. **Gauge Group Emergence**  
+    gauge_emergence_su3_su2_u1_from_j0.png
+
+20. **The Final Seal**  
+    final_cover_plot.png
+
+**400+ plots. 400+ proofs. 250+ docs.**  
+**All from one measured number: J₀ = 10¹⁸ A/m²**
+
+No dark matter. No dark energy. No free parameters.
+
+ALADIN ∞ ℂ(t)
