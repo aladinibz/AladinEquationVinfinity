@@ -1,45 +1,87 @@
-# docs/ — 124 Mathematical Derivations of ALADIN ∞ ℂ(t)
+# ALADIN ∞ ℂ(t) — 250+ Docs: The Complete Derivation Library
 
-> **From one current J₀ = 10¹⁸ A/m² to the complete theory of the universe.**  
-> **124 derivations. Zero free parameters. Pure mathematics.**
->
-> **124 rigorous mathematical derivations** — all starting from the measured cosmic plasma current  
-**J₀ = 1.000 × 10¹⁸ A/m²** → **f₀ = 43.00000000 Hz**
+One current. One number. Everything.
 
-Each file is a complete, step-by-step proof — written in LaTeX + Python verification.
+### The 25 Chapters of the Final Theory
 
-## Derivation Categories (124 total)
+1. **J₀ from 20 CMB Peaks**  
+   j0_from_1st_peak.md → j0_from_20th_peak.md
 
-| Category                                | Files | Key Derivations |
-|-----------------------------------------|-------|-----------------|
-| **Cosmic Frequency & J₀**               | 18    | f₀ = 43 Hz from J₀ + ρ_crit + Planck scale |
-| **CMB Acoustic Peaks**                  | 20    | ℓₙ = n × 219.6 — full Boltzmann derivation |
-| **Hubble Tension Resolution**           | 12    | H₀ = 73.200 km/s/Mpc from J₀ plasma dynamics |
-| **Black Hole Entropy**                  | 8     | S = A/4 from octonion states per Planck area |
-| **Z-pinch Cosmology**                   | 26    | Bullet Cluster, cosmic web, void dynamics |
-| **Octonions & Division Algebras**       | 22    | φ^(1/3) from V₈/V₇ — Hurwitz theorem proof |
-| **Lagrangian (7 Terms)**                | 7     | Complete 7-term derivation from J₀ + 43 Hz |
-| **Consciousness & Quantum Biology**     | 18    | 43 → 50 Hz via golden ratio — microtubule eigenmode |
-| **Neutrino Physics**                    | 14    | Σm_ν = 0.05912 eV — PMNS matrix from J₀ |
-| **Primordial Predictions**              | 9     | r = 0, σ₈ = 0.78, null primordial GW |
+2. **43 Hz — The Universal Frequency**  
+   43hz_from_j0_derivation.md → 43hz_exact_formula.md → 43hz_quasar_periodicity.md
 
-**Total = 124 derivations** — **all executable** — **all falsifiable**
+3. **43 Hz in Consciousness**  
+   43hz_to_50hz_brain.md → consciousness_resonance.md → consciousness_to_universe_43hz.md
 
-## How to Compile All Derivations
+4. **Z-pinch Cosmic Web**  
+   z_pinch_cosmology.md → filament_formation_mechanisms.md → void_formation_mechanisms.md
 
-```bash
-cd docs
-pdflatex master_thesis.tex   # generates 400+ page Final Law paper
+5. **Sausage & Kink Modes**  
+   sausage_dispersion_final.md → kink_mode_dispersion_final.md → final_kink_stability_all_modes.md
 
-@software{aladin_2025,
-  author = {Bucurenciu, Mihai Aladin},
-  title = {ALADIN ∞ ℂ(t): The Final Law — 124 Mathematical Derivations},
-  year = {2025},
-  doi = {10.5281/zenodo.17636124},
-  url = {https://github.com/aladinibz/AladinEquationVinfinity}
-}
+6. **Neutrino PMNS from J₀**  
+   neutrino_pmns_from_j0.md → delta_cp_derivation.md → pmns_from_j0.md
 
-From one measured current to the complete theory of reality.
-124 derivations. One equation. The Final Law.
-Spain — November 2025 — Phone only
-Nobel Physics 2030 reserved
+7. **Baryon Asymmetry η**  
+   baryon_photon_eta_from_j0.md → yp_vs_j0_sweep.md
+
+8. **Helium Yₚ Explicit**  
+   helium_fraction_explicit_from_j0.md → yp_vs_freezeout_temp.md → yp_deuterium_bottleneck.md
+
+9. **No Dark Matter — Bullet Cluster**  
+   bullet_cluster_full.md → bullet_lensing_errorbars.md
+
+10. **No Dark Matter — Rotation Curves**  
+    tully_fisher_from_j0.md → v_flat_from_j0.md → btfr_zpinch.md
+
+11. **Lensing Without Dark Matter**  
+    einstein_ring_aladin.md → slacs_lenses_aladin.md
+
+12. **Hubble Tension Solved**  
+    hubble_tension_solved.md → hubble_n_exponent.md
+
+13. **ΛCDM Killed**  
+    chi2_vs_planck2018_desi2024.md → desi_voids_aladin.md
+
+14. **Inflation Dead**  
+    ns_r_from_j0.md → b_mode_null_prediction.md
+
+15. **BBN Complete**  
+    bbn_he4_solved.md → bbn_deuterium_solved.md → bbn_li7_solved.md
+
+16. **JWST High-z Solved**  
+    jwst_z20_galaxies.md → jwst_quasar_aladin.md
+
+17. **Octonions & Higher Algebra**  
+    octonion_cosmology.md → fano_plane_geometric.md → hurwitz_theorem_full_proof.md
+
+18. **Gauge Group Emergence**  
+    gauge_emergence_su3_su2_u1_from_j0.md
+
+19. **Lagrangian Terms 1–7**  
+    lagrangian_term1_rigorous.md → term7_final_heartbeat.md
+
+20. **Reionization & Dark Ages**  
+    reionization_history_aladin.md
+
+21. **Cosmic Shear & Weak Lensing**  
+    cosmic_shear_full_aladin.md → euclid_weak_lensing_aladin.md
+
+22. **Higher Dimensions**  
+    chingon_64d_extension.md → sedenion_lagrangian_extension.md
+
+23. **Fusion & Lab Proofs**  
+    fusion_tokamak_43hz.md → stellarator_fusion_sim.md
+
+24. **The Final Seal**  
+    final_cover_plot.md
+
+25. **The Final Law**  
+    ALADIN_The_Final_Law_v4.pdf
+
+**250+ docs. 400+ proofs. 400+ plots.**  
+**All from one measured number: J₀ = 10¹⁸ A/m²**
+
+No dark matter. No dark energy. No free parameters.
+
+ALADIN ∞ ℂ(t)
