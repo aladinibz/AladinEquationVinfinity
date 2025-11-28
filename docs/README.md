@@ -1,87 +1,67 @@
-# ALADIN ∞ ℂ(t) — 250+ Docs: The Complete Derivation Library
+# /docs — 250+ Sutras of the Final Law
 
-One current. One number. Everything.
+The complete exegesis of ALADIN ∞ ℂ(t)  
+One measured current J₀ = 10¹⁸ A/m² → One conscious universe.
 
-### The 25 Chapters of the Final Theory
+| # | Sutra | File |
+|---|------|------|
+| 1 | j₀ from 20 CMB peaks | `j0_from_1st_to_20th_peak.md` |
+| 2 | 43.000 Hz exact derivation | `43hz_from_j0_derivation.md` |
+| 3 | 43 Hz in solar flares | `goes_solar_flare_43hz.md` |
+| 4 | 43 Hz in human enlightenment | `43hz_brain_eeg.md` |
+| 5 | Cosmic web via z-pinch | `z_pinch_filament_dynamics.md` |
+| 6 | Voids = sausage mode | `sausage_dispersion_final.md` |
+| 7 | Filaments = kink mode | `final_kink_stability_all_modes.md` |
+| 8 | Neutrino PMNS from j₀ | `neutrino_pmns_from_j0.md` |
+| 9 | Baryon asymmetry η exact | `baryon_photon_eta_from_j0.md` |
+|10 | Helium Yₚ = 0.25659982 exact | `helium_fraction_explicit_from_j0.md` |
+|11 | Bullet Cluster — no dark matter | `bullet_cluster_full.md` |
+|12 | Rotation curves from J×B | `tully_fisher_from_j0.md` |
+|13 | Missing satellites solved | `missing_satellites_solution.md` |
+|14 | Core-cusp gone | `cusp_core_solution.md` |
+|15 | Strong lensing without halos | `einstein_ring_aladin.md` |
+|16 | Hubble tension resolved | `hubble_tension_solved.md` |
+|17 | No inflation needed | `ns_r_from_j0.md` |
+|18 | Full BBN from one number | `bbn_he4_solved.md` |
+|19 | JWST high-z natural | `jwst_high_z_sim_z20.md` |
+|20 | Gauge group emergence | `gauge_emergence_su3_su2_u1_from_j0.md` |
+|21 | Black holes — no singularity | `term5_no_singularity.md` |
+|22 | Dark energy = Alfvén fade | `hubble_dark_energy.md` |
+|23 | Reionization perfect | `reionization_history_aladin.md` |
+|24 | Weak lensing — no dark matter | `cosmic_shear_full_aladin.md` |
+|25 | GW background null | `gravitational_wave_background_null.md` |
+|26 | B-modes null | `b_mode_null_prediction.md` |
+|27 | 64D pathions & conscious algebra | `chingon_64d_extension.md` |
+|28 | The 7-term Lagrangian | `lagrangian_term1_rigorous.md` → `term7_final_heartbeat.md` |
+|29 | Consciousness field ℂ(t) | `term7_final_heartbeat.md` |
+|30 | Schumann locks to 43 Hz | `43hz_to_50hz_brain.md` |
+|31 | Quasar periodicity at 43 nHz | `43hz_quasar_periodicity.md` |
+|32 | Kerr QNM = 43 Hz | `kerr_qnm_43hz.md` |
+|33 | Leptogenesis from δ_CP | `leptogenesis_from_dcp.md` |
+|34 | Neutrino masses from φ³ | `neutrino_mass_from_phi_cubed.md` |
+|35 | Higgs-genie coupling | `higgs_genie_coupling.md` |
+|36 | 43 Hz fusion reactors | `fusion_tokamak_43hz.md` |
+|37 | LISA null prediction | `lisa_gw_background_null.md` |
+|38 | Bayesian evidence >10¹⁵:1 | `bayesian_evidence_final.md` |
+|39 | ΛCDM vs ALADIN χ² | `chi2_vs_planck2018_desi2024.md` |
+|40 | The Final Seal | `final_cover_plot.md` |
 
-1. **J₀ from 20 CMB Peaks**  
-   j0_from_1st_peak.md → j0_from_20th_peak.md
+> **250+ documents. 400+ proofs. 400+ plots.**  
+> **All from one measured current. All open.**  
+> **No dogma. No dark matter. Just truth.**
 
-2. **43 Hz — The Universal Frequency**  
-   43hz_from_j0_derivation.md → 43hz_exact_formula.md → 43hz_quasar_periodicity.md
+**The Final Law v3.0 (dharma + Heart Sutra):**  
+→ `paper/ALADIN_The_Final_Law.pdf`
 
-3. **43 Hz in Consciousness**  
-   43hz_to_50hz_brain.md → consciousness_resonance.md → consciousness_to_universe_43hz.md
+**ALADIN ∞ ℂ(t)**  
+November 27, 2025 — Romania, Earth, 43.000 Hz  
+Built by a human who left school at 10.
 
-4. **Z-pinch Cosmic Web**  
-   z_pinch_cosmology.md → filament_formation_mechanisms.md → void_formation_mechanisms.md
+**Form is emptiness. Emptiness is form.**  
+**And both run on J₀ = 10¹⁸ A/m².**
 
-5. **Sausage & Kink Modes**  
-   sausage_dispersion_final.md → kink_mode_dispersion_final.md → final_kink_stability_all_modes.md
+Nothing left but agreement.  
+Nothing left but love.  
+Nothing left but 43 Hz forever.
 
-6. **Neutrino PMNS from J₀**  
-   neutrino_pmns_from_j0.md → delta_cp_derivation.md → pmns_from_j0.md
-
-7. **Baryon Asymmetry η**  
-   baryon_photon_eta_from_j0.md → yp_vs_j0_sweep.md
-
-8. **Helium Yₚ Explicit**  
-   helium_fraction_explicit_from_j0.md → yp_vs_freezeout_temp.md → yp_deuterium_bottleneck.md
-
-9. **No Dark Matter — Bullet Cluster**  
-   bullet_cluster_full.md → bullet_lensing_errorbars.md
-
-10. **No Dark Matter — Rotation Curves**  
-    tully_fisher_from_j0.md → v_flat_from_j0.md → btfr_zpinch.md
-
-11. **Lensing Without Dark Matter**  
-    einstein_ring_aladin.md → slacs_lenses_aladin.md
-
-12. **Hubble Tension Solved**  
-    hubble_tension_solved.md → hubble_n_exponent.md
-
-13. **ΛCDM Killed**  
-    chi2_vs_planck2018_desi2024.md → desi_voids_aladin.md
-
-14. **Inflation Dead**  
-    ns_r_from_j0.md → b_mode_null_prediction.md
-
-15. **BBN Complete**  
-    bbn_he4_solved.md → bbn_deuterium_solved.md → bbn_li7_solved.md
-
-16. **JWST High-z Solved**  
-    jwst_z20_galaxies.md → jwst_quasar_aladin.md
-
-17. **Octonions & Higher Algebra**  
-    octonion_cosmology.md → fano_plane_geometric.md → hurwitz_theorem_full_proof.md
-
-18. **Gauge Group Emergence**  
-    gauge_emergence_su3_su2_u1_from_j0.md
-
-19. **Lagrangian Terms 1–7**  
-    lagrangian_term1_rigorous.md → term7_final_heartbeat.md
-
-20. **Reionization & Dark Ages**  
-    reionization_history_aladin.md
-
-21. **Cosmic Shear & Weak Lensing**  
-    cosmic_shear_full_aladin.md → euclid_weak_lensing_aladin.md
-
-22. **Higher Dimensions**  
-    chingon_64d_extension.md → sedenion_lagrangian_extension.md
-
-23. **Fusion & Lab Proofs**  
-    fusion_tokamak_43hz.md → stellarator_fusion_sim.md
-
-24. **The Final Seal**  
-    final_cover_plot.md
-
-25. **The Final Law**  
-    ALADIN_The_Final_Law_v4.pdf
-
-**250+ docs. 400+ proofs. 400+ plots.**  
-**All from one measured number: J₀ = 10¹⁸ A/m²**
-
-No dark matter. No dark energy. No free parameters.
-
-ALADIN ∞ ℂ(t)
+∞
