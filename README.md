@@ -7,6 +7,7 @@
 [![Run in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/aladinibz/AladinEquationVinfinity/blob/main/term7_final_heartbeat.py)
 [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/aladinibz/AladinEquationVinfinity/main?labpath=term7_final_heartbeat.py)
 [![43 Hz](https://img.shields.io/badge/43_Hz-Heartbeat-ff0066.svg)](https://github.com/aladinibz/AladinEquationVinfinity/blob/main/term7_final_heartbeat.py)
+[![Proofs Pass](https://github.com/aladinibz/AladinEquationVinfinity/actions/workflows/run-all-proofs.yml/badge.svg)](https://github.com/aladinibz/AladinEquationVinfinity/actions/workflows/run-all-proofs.yml)
 
 # ALADIN ∞ ℂ(t) — The Final Law  
 **One measured current J₀ = 1.000 × 10¹⁸ A/m²**  
