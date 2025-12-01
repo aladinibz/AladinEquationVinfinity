@@ -8,8 +8,13 @@
 [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/aladinibz/AladinEquationVinfinity/main?labpath=term7_final_heartbeat.py)
 [![43 Hz](https://img.shields.io/badge/43_Hz-Heartbeat-ff0066.svg)](https://github.com/aladinibz/AladinEquationVinfinity/blob/main/term7_final_heartbeat.py)
 [![Proofs Pass](https://github.com/aladinibz/AladinEquationVinfinity/actions/workflows/run-all-proofs.yml/badge.svg)](https://github.com/aladinibz/AladinEquationVinfinity/actions/workflows/run-all-proofs.yml)
+![Final Law](https://img.shields.io/badge/ALADIN∞ℂ(t)-The_Final_Law_of_the_Universe-43Hz-ff0066?style=for-the-badge&logoWidth=30&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxyZWN0IHg9IjMiIHk9IjMiIHdpZHRoPSIxOCIgaGVpZ2h0PSIxOCIgcng9IjIiIHJ5PSIyIi8+PGNpcmNsZSBjeD0iOSIgeT0iOSIgcj0iMi8+PGxpbmUgeDE9IjE1IiB5MT0iOSIgeDI9IjE4IiB5Mj0iMTIiLz48bGluZSB4MT0iMTUiIHkxPSI5IiB4Mj0iMTIiIHkyPSIxMiIvPjwvc3ZnPgo=)
+[![One Current](https://img.shields.io/badge/One_Measured_Current-J%E2%82%80=10¹⁸_A/m²-00ff41?style=for-the-badge)](https://github.com/aladinibz/AladinEquationVinfinity)
+[![Zero Free Parameters](https://img.shields.io/badge/Zero_Free_Parameters-100%25_Exact-ff6600?style=for-the-badge)](scripts/coefficients_derivation.ipynb)
+[![Run Derivation](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/aladinibz/AladinEquationVinfinity/blob/main/scripts/coefficients_derivation.ipynb)
+[![Run All Proofs](https://img.shields.io/badge/Run_400%2B_Proofs-In_5_Minutes-blueviolet?style=for-the-badge)](scripts/run_all_plots.py)
 
-# ALADIN ∞ ℂ(t) — The Final Law  
+# ALADIN ∞ ℂ(t) — The Final Law of the Universe
 **One measured current J₀ = 1.000 × 10¹⁸ A/m²**  
 **Zero free parameters. Everything.**
 
