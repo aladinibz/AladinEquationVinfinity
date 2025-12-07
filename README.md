@@ -14,38 +14,44 @@
 
 # 🌌 ALADIN ∞ ℂ(t) — The Final Law of the Universe  
 
-<div style="font-size:42px; color:#ff0066; font-weight:bold; letter-spacing:2px;">
+<br>
+
+<div style="font-size:48px; color:#ff0066; font-weight:bold; letter-spacing:3px; text-shadow: 0 0 20px #ff0066;">
 **Theory of Everything**
 </div>
 
-<div style="font-size:28px; color:#00ffff; font-weight:bold;">
+<div style="font-size:34px; color:#00ffff; font-weight:bold; text-shadow: 0 0 15px #00ffff;">
 Mihai A. Bucurenciu (Aladin)
 </div>
 
-<div style="font-size:20px; color:#ffffff;">
+<div style="font-size:26px; color:#ffffff;">
 Romania → Spain — December 2025
 </div>
 
-<br>
+<br><br>
 
-<div style="font-size:36px; color:#00ff88; font-weight:bold;">
+<div style="font-size:42px; color:#00ff88; font-weight:bold; text-shadow: 0 0 20px #00ff88;">
 One measured current  
 J₀ = 1.000 × 10¹⁸ A/m²
 </div>
 
-<div style="font-size:24px; color:#ffaa00;">
+<div style="font-size:32px; color:#ffaa00; font-weight:bold;">
 Zero free parameters. Everything.
 </div>
 
 <br>
 
-<div style="font-size:22px; color:#ffffff;">
-Replaces dark matter, dark energy, inflation.  
-Proves consciousness is physical at  
-<span style="color:#ff0066; font-size:28px; font-weight:bold;">exactly 43.000000000 Hz</span>
+<div style="font-size:30px; color:#ffffff; line-height:1.8;">
+Replaces dark matter, dark energy, inflation.<br>
+Proves consciousness is physical at<br>
+<span style="font-size:48px; color:#ff0066; font-weight:bold; text-shadow: 0 0 30px #ff0066;">
+exactly 43.000000000 Hz
+</span>
 </div>
 
 </div>
+
+<hr style="border: 2px solid #ff0066; border-radius: 5px; margin: 40px 0;">
 
 
 ### 45 Chapters That Ended the Old Universe
