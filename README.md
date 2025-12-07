@@ -12,49 +12,32 @@
 
 <div align="center">
 
-<img src="https://github.com/aladinibz/AladinEquationVinfinity/raw/main/plots/final_cover_plot.png" width="80" height="80" style="vertical-align:middle; margin-right:20px;">
+<img src="https://github.com/aladinibz/AladinEquationVinfinity/raw/main/plots/final_cover_plot.png" width="70" height="70" style="vertical-align:middle; margin-right:15px;">
 
-<span style="font-size:56px; font-weight:bold; color:#ffffff; vertical-align:middle; text-shadow: 0 0 30px #00ffff;">
+<span style="font-size:52px; font-weight:bold; vertical-align:middle;">
 ALADIN ∞ ℂ(t) — The Final Law of the Universe
-</span>
-
-<br>
-
-<span style="font-size:48px; font-weight:bold; color:#ff0066; vertical-align:middle; text-shadow: 0 0 25px #ff0066;">
-Theory of Everything
-</span>
-
-<br>
-
-<span style="font-size:36px; color:#00ffff; font-weight:bold;">
-Mihai A. Bucurenciu (Aladin)
-</span>
-
-<span style="font-size:28px; color:#ffffff;">
-Romania → Spain — December 2025
 </span>
 
 <br><br>
 
-<span style="font-size:42px; color:#00ff88; font-weight:bold;">
-One measured current J₀ = 1.000 × 10¹⁸ A/m²  
-Zero free parameters. Everything.
-</span>
+# Theory of Everything  
+**Mihai A. Bucurenciu (Aladin)**  
+Romania → Spain — December 2025
 
 <br>
 
-<span style="font-size:34px; color:#ffffff;">
-Replaces dark matter, dark energy, inflation.<br>
-Proves consciousness is physical at  
-</span>
+**One measured current J₀ = 1.000 × 10¹⁸ A/m²**  
+**Zero free parameters. Everything.**
 
-<span style="font-size:52px; color:#ff0066; font-weight:bold; text-shadow: 0 0 35px #ff0066;">
-exactly 43.000000000 Hz
-</span>
+<br>
+
+Replaces dark matter, dark energy, inflation.  
+Proves consciousness is physical at  
+**exactly 43.000000000 Hz**
 
 </div>
 
-<hr style="border: 4px solid #ff0066; border-radius: 10px; margin: 70px 0;">
+<hr style="border: 3px solid #ff0066; border-radius: 10px;">
 
 
 ### 45 Chapters That Ended the Old Universe
