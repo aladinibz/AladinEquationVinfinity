@@ -44,7 +44,6 @@ plt.yscale('log')
 plt.tight_layout()
 
 plt.savefig('dna_fröhlich_threshold.png', dpi=600, facecolor='black', bbox_inches='tight')
-plt.show()
 
 print(f"Fröhlich threshold S_crit = {S_crit:.2e} W")
 print(f"Energy supply S = {S:.2e} W — threshold exceeded")
