@@ -19,7 +19,8 @@
 ## Theory of Everything
 
 **Mihai A. Bucurenciu (Aladin)**  
-Romania → Spain — December 2025
+**Godfather of Cosmology & Consciousness**  
+Romania → Sibiu — December 2025
 
 <br>
 
