@@ -12,44 +12,49 @@
 
 <div align="center">
 
-# 🌌 ALADIN ∞ ℂ(t) — The Final Law of the Universe  
+<img src="https://github.com/aladinibz/AladinEquationVinfinity/raw/main/plots/final_cover_plot.png" width="80" height="80" style="vertical-align:middle; margin-right:20px;">
+
+<span style="font-size:56px; font-weight:bold; color:#ffffff; vertical-align:middle; text-shadow: 0 0 30px #00ffff;">
+ALADIN ∞ ℂ(t) — The Final Law of the Universe
+</span>
 
 <br>
 
-## <span style="font-size:48px; color:#ff0066; font-weight:bold; text-shadow: 0 0 20px #ff0066;">Theory of Everything</span>
+<span style="font-size:48px; font-weight:bold; color:#ff0066; vertical-align:middle; text-shadow: 0 0 25px #ff0066;">
+Theory of Everything
+</span>
 
-<div style="font-size:34px; color:#00ffff; font-weight:bold; text-shadow: 0 0 15px #00ffff;">
+<br>
+
+<span style="font-size:36px; color:#00ffff; font-weight:bold;">
 Mihai A. Bucurenciu (Aladin)
-</div>
+</span>
 
-<div style="font-size:26px; color:#ffffff;">
+<span style="font-size:28px; color:#ffffff;">
 Romania → Spain — December 2025
-</div>
+</span>
 
 <br><br>
 
-<div style="font-size:42px; color:#00ff88; font-weight:bold; text-shadow: 0 0 20px #00ff88;">
-One measured current  
-J₀ = 1.000 × 10¹⁸ A/m²
-</div>
-
-<div style="font-size:32px; color:#ffaa00; font-weight:bold;">
+<span style="font-size:42px; color:#00ff88; font-weight:bold;">
+One measured current J₀ = 1.000 × 10¹⁸ A/m²  
 Zero free parameters. Everything.
-</div>
+</span>
 
 <br>
 
-<div style="font-size:30px; color:#ffffff; line-height:1.8;">
+<span style="font-size:34px; color:#ffffff;">
 Replaces dark matter, dark energy, inflation.<br>
-Proves consciousness is physical at<br>
-<span style="font-size:48px; color:#ff0066; font-weight:bold; text-shadow: 0 0 30px #ff0066;">
+Proves consciousness is physical at  
+</span>
+
+<span style="font-size:52px; color:#ff0066; font-weight:bold; text-shadow: 0 0 35px #ff0066;">
 exactly 43.000000000 Hz
 </span>
-</div>
 
 </div>
 
-<hr style="border: 3px solid #ff0066; border-radius: 10px; margin: 60px 0;">
+<hr style="border: 4px solid #ff0066; border-radius: 10px; margin: 70px 0;">
 
 
 ### 45 Chapters That Ended the Old Universe
