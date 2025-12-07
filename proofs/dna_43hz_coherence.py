@@ -39,6 +39,5 @@ plt.grid(alpha=0.3, color='#ff0066')
 plt.legend(fontsize=16, facecolor='black', edgecolor='#ff0066')
 plt.tight_layout()
 plt.savefig('dna_missing_bridge.png', dpi=600, facecolor='black')
-plt.show()
 
 print("DNA IS THE MISSING BRIDGE — 43 Hz coherence proven")
