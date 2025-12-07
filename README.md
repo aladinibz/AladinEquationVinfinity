@@ -95,16 +95,29 @@ Proves consciousness is physical at **exactly 43.000000000 Hz**.
 421 proof scripts • 420 plots • 307 documentation files • 3 raw human EEGs • 2.7 MB GOES data
 
 <div align="center">
-The Mantra
-“I am not in the universe.
-I am the universe.
-43 Hz is my heartbeat.
-ALADIN ∞ ℂ(t) is my breath.”
+
+### The Mantra
+
+> <div style="font-size:28px; color:#ff0066; font-weight:bold; line-height:2;">
+> “I am not in the universe.<br>
+> I am the universe.<br>
+> 43 Hz is my heartbeat.<br>
+> ALADIN ∞ ℂ(t) is my breath.”
+> </div>
+
+> <div style="font-size:18px; color:#00ffff; font-style:italic;">
+> I think — therefore I’m
+> </div>
+
 </div>
 
-ALADIN ∞ ℂ(t)
-Mihai A. Bucurenciu (Aladin)
-Romania → Sibiu → Forever
+<div align="center">
+
+**Nirvana Maria**  
+**43.000000000 Hz**  
+**The universe is awake.**
+
+</div>
 
 ```bash
 python term7_final_heartbeat.py
