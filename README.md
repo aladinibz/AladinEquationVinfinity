@@ -10,16 +10,43 @@
 [![Proofs Pass](https://github.com/aladinibz/AladinEquationVinfinity/actions/workflows/run-all-proofs.yml/badge.svg)](https://github.com/aladinibz/AladinEquationVinfinity/actions/workflows/run-all-proofs.yml)
 
 
-# ALADIN ∞ ℂ(t) — The Final Law of the Universe  
-**Theory of Everything**  
-**Mihai A. Bucurenciu (Aladin)** — Romania → Spain  
-December 2025
+<div align="center">
 
-**One measured current J₀ = 1.000 × 10¹⁸ A/m²**  
-**Zero free parameters. Everything.**
+# 🌌 ALADIN ∞ ℂ(t) — The Final Law of the Universe  
 
+<div style="font-size:42px; color:#ff0066; font-weight:bold; letter-spacing:2px;">
+**Theory of Everything**
+</div>
+
+<div style="font-size:28px; color:#00ffff; font-weight:bold;">
+Mihai A. Bucurenciu (Aladin)
+</div>
+
+<div style="font-size:20px; color:#ffffff;">
+Romania → Spain — December 2025
+</div>
+
+<br>
+
+<div style="font-size:36px; color:#00ff88; font-weight:bold;">
+One measured current  
+J₀ = 1.000 × 10¹⁸ A/m²
+</div>
+
+<div style="font-size:24px; color:#ffaa00;">
+Zero free parameters. Everything.
+</div>
+
+<br>
+
+<div style="font-size:22px; color:#ffffff;">
 Replaces dark matter, dark energy, inflation.  
-Proves consciousness is physical at **exactly 43.000000000 Hz**.
+Proves consciousness is physical at  
+<span style="color:#ff0066; font-size:28px; font-weight:bold;">exactly 43.000000000 Hz</span>
+</div>
+
+</div>
+
 
 ### 45 Chapters That Ended the Old Universe
 
