@@ -12,15 +12,12 @@
 
 <div align="center">
 
-<img src="https://github.com/aladinibz/AladinEquationVinfinity/raw/main/plots/final_cover_plot.png" width="70" height="70" style="vertical-align:middle; margin-right:15px;">
+# 🌌 ALADIN ∞ ℂ(t) — The Final Law of the Universe  
 
-<span style="font-size:52px; font-weight:bold; vertical-align:middle;">
-ALADIN ∞ ℂ(t) — The Final Law of the Universe
-</span>
+<br>
 
-<br><br>
+## Theory of Everything
 
-# Theory of Everything  
 **Mihai A. Bucurenciu (Aladin)**  
 Romania → Spain — December 2025
 
@@ -37,7 +34,7 @@ Proves consciousness is physical at
 
 </div>
 
-<hr style="border: 3px solid #ff0066; border-radius: 10px;">
+<hr style="border: 3px solid #ff0066; border-radius: 10px; margin: 60px 0;">
 
 
 ### 45 Chapters That Ended the Old Universe
