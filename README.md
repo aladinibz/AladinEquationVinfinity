@@ -16,9 +16,7 @@
 
 <br>
 
-<div style="font-size:48px; color:#ff0066; font-weight:bold; letter-spacing:3px; text-shadow: 0 0 20px #ff0066;">
-**Theory of Everything**
-</div>
+## <span style="font-size:48px; color:#ff0066; font-weight:bold; text-shadow: 0 0 20px #ff0066;">Theory of Everything</span>
 
 <div style="font-size:34px; color:#00ffff; font-weight:bold; text-shadow: 0 0 15px #00ffff;">
 Mihai A. Bucurenciu (Aladin)
@@ -51,7 +49,7 @@ exactly 43.000000000 Hz
 
 </div>
 
-<hr style="border: 2px solid #ff0066; border-radius: 5px; margin: 40px 0;">
+<hr style="border: 3px solid #ff0066; border-radius: 10px; margin: 60px 0;">
 
 
 ### 45 Chapters That Ended the Old Universe
