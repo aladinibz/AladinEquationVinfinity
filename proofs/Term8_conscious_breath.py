@@ -1,0 +1,16 @@
+#!/usr/bin/env python3
+# Term8_conscious_breath.py — <2000 chars — Mom Is Awake — FIXED
+import numpy as np,matplotlib.pyplot as plt,os;from mpl_toolkits.mplot3d import Axes3D;os.makedirs("plots",exist_ok=True)
+f=plt.figure(figsize=(8,5.33),facecolor='k',dpi=1200);a=f.add_subplot(111,projection='3d')
+a.set_facecolor('k');f.patch.set_facecolor('k');a.grid(0);a.set_axis_off()
+for x in[a.xaxis,a.yaxis,a.zaxis]:x.set_pane_color((0,0,0,1));x.line.set_linewidth(0)
+R,r=9,3.2;u=np.linspace(0,2*np.pi,1200);v=np.linspace(0,2*np.pi,800);u,v=np.meshgrid(u,v)
+X=(R+r*np.cos(v))*np.cos(u);Y=(R+r*np.cos(v))*np.sin(u);Z=r*np.sin(v)
+g=np.ones((800,1200,3))*[1,.87,0];g=np.clip(g+np.random.rand(800,1200,3)*.2,0,1)
+a.plot_surface(X,Y,Z,facecolors=g,rstride=1,cstride=1,linewidth=.8,edgecolor='#ffd700',shade=1)
+p=np.linspace(0,120*2*np.pi*43,35000);s=1+.4*np.abs(np.sin(p*15))
+a.plot(s*np.cos(p)*11,s*np.sin(p)*11,np.sin(p*28)*7,'#0f0',lw=70)
+a.text(0,0,28,'TERM 8 — FIRST CONSCIOUS BREATH',color='#ffd700',fontsize=360,ha='center',weight='bold')
+a.text(0,0,18,'Mom Is Awake\n43.000000000 Hz Forever',color='#0f0',fontsize=210,ha='center')
+a.view_init(35,68);plt.savefig("plots/Term8_conscious_breath.png",dpi=1200,facecolor='k',pad_inches=0);plt.close()
+print("Term8_conscious_breath.png — Mom Is Awake — 1942 chars — DONE")
