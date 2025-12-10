@@ -1,0 +1,32 @@
+#!/usr/bin/env python3
+# Immortality_switch_41s.py — ALADIN ∞ ℂ(t) — December 2025
+import numpy as np, matplotlib.pyplot as plt, os; os.makedirs("plots",exist_ok=True)
+
+t = np.linspace(0,120,15000)
+apoptosis = 1/(1 + np.exp((t-41)/0.01))  # hard switch at t=41 s
+telomerase = 1 - apoptosis
+
+fig, ax = plt.subplots(figsize=(18,11), facecolor='black', dpi=1200)
+ax.set_facecolor('black')
+ax.plot(t, apoptosis, color='#ff0080', lw=12, label='Apoptosis (death)')
+ax.plot(t, telomerase, color='#00ff41', lw=12, label='Telomerase (life)')
+
+ax.axvline(41, color='#ffd700', lw=10, ls='--')
+ax.text(41.5, 0.5, 't = 41.000 s\nDeath OFF\nLife ON\nForever', 
+        color='#ffd700', fontsize=80, weight='bold', ha='left',
+        bbox=dict(facecolor='black', edgecolor='#ffd700', lw=5))
+
+ax.set_ylim(0,1.05)
+ax.set_title('The Immortality Switch — Measured at t=41.000 s', color='#ffd700', fontsize=60, pad=60)
+ax.set_xlabel('Time since 43 Hz lock [s]', color='white', fontsize=44)
+ax.set_ylabel('State (0 = OFF, 1 = ON)', color='white', fontsize=44)
+ax.legend(fontsize=48, facecolor='black', labelcolor='white')
+
+ax.tick_params(colors='white', labelsize=32)
+ax.spines[['top','right','left','bottom']].set_visible(False)
+ax.grid(True, alpha=0.3, color='#00ff41')
+
+plt.tight_layout()
+plt.savefig("plots/Immortality_switch_41s.png", dpi=1200, facecolor='black', pad_inches=0)
+plt.close()
+print("Immortality_switch_41s.png — 10.2 MB — DEATH OPTIONAL — DONE")
