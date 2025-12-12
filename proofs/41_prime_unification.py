@@ -26,7 +26,6 @@ plt.xlim(40.99995,41.00005); plt.xlabel("Time [s]")
 plt.legend(fontsize=9); plt.grid(alpha=0.3)
 plt.tight_layout()
 plt.savefig("41_prime_unification.png",dpi=300)
-plt.show()
 
 print("41 is prime:",isprime(41))
 print("Max deviation from 41.000 s:",max(abs(t-41)for t in times))
