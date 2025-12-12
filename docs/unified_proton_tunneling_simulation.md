@@ -11,3 +11,4 @@ Infinite coherence at 4096 cycles via Chingon zero-divisors.
 Predicts: 37 mV jumps (Pietruszka), 380 µV EEG spike, immortality switch.
 
 Nobel Prize in Physics 2026 evidence.
+
