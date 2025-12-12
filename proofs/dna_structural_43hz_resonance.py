@@ -24,6 +24,5 @@ plt.xlabel("Frequency [Hz]"); plt.ylabel("Spectral amplitude")
 plt.xlim(1, 100); plt.grid(alpha=0.3); plt.legend()
 plt.tight_layout()
 plt.savefig("dna_structural_43hz_resonance.png",dpi=300)
-plt.show()
 
 print("Peak frequency:", freq[np.argmax(spectrum)])

@@ -20,7 +20,6 @@ plt.xlabel("Time [s]"); plt.ylabel("Normalized activity")
 plt.xlim(0,100); plt.ylim(0,1.1); plt.legend(fontsize=10)
 plt.grid(alpha=0.3); plt.tight_layout()
 plt.savefig("cancer_telomerase_identity_41s.png",dpi=300)
-plt.show()
 
 print("Post-41s product mean:", product[t>41].mean())
 print("Max deviation from 1.0:", abs(product[t>41] - 1).max())
