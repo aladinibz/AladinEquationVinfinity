@@ -67,4 +67,3 @@ plt.title(f"Subject 31 (Meditation) — Full EEG\nHiguchi FD = {hfd:.3f}, DFA α
 plt.xlabel("Time [s]"); plt.ylabel("Amplitude [µV]")
 plt.grid(alpha=0.3); plt.tight_layout()
 plt.savefig("subject_31_higuchi_dfa.png", dpi=400)
-plt.show()
