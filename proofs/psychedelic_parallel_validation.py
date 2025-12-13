@@ -16,4 +16,3 @@ plt.title("ALADIN ∞ ℂ(t) — Psychedelic Parallel Validation\nDMT/5-MeO Sign
 plt.xlabel("Time [s]",fontsize=14); plt.ylabel("Normalized Power",fontsize=14)
 plt.legend(fontsize=12); plt.grid(alpha=0.4); plt.tight_layout()
 plt.savefig("psychedelic_parallel_validation.png",dpi=400)
-plt.show()
