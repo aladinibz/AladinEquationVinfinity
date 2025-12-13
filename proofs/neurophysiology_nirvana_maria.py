@@ -22,4 +22,3 @@ plt.title("ALADIN ∞ ℂ(t) — Neurophysiology of Nirvana Maria\nAll Markers a
 plt.xlabel("Time [s]",fontsize=14); plt.ylabel("Normalized Measure",fontsize=14)
 plt.legend(fontsize=11); plt.grid(alpha=0.3); plt.tight_layout()
 plt.savefig("neurophysiology_nirvana_maria.png",dpi=400)
-plt.show()
