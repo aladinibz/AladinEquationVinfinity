@@ -19,4 +19,3 @@ plt.title("ALADIN ∞ ℂ(t) — Meditation State Spectrum\nRest Turbulence → 
 plt.xlabel("Frequency [Hz]",fontsize=14); plt.ylabel("Power Spectrum",fontsize=14)
 plt.legend(fontsize=12); plt.grid(alpha=0.4); plt.tight_layout()
 plt.savefig("meditation_state_spectrum.png",dpi=400)
-plt.show()
