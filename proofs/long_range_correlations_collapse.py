@@ -14,4 +14,3 @@ plt.xlabel("Time [s]",fontsize=14); plt.ylabel("DFA Scaling Exponent α",fontsiz
 plt.ylim(0.4,1.0); plt.legend(fontsize=12)
 plt.grid(alpha=0.4); plt.tight_layout()
 plt.savefig("long_range_correlations_collapse.png",dpi=400)
-plt.show()
