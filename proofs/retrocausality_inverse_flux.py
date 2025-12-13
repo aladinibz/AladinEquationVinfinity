@@ -17,4 +17,3 @@ plt.title("ALADIN ∞ ℂ(t) — Retrocausality as Inverse Energy Flux\n9th Soun
 plt.xlabel("Time [s]",fontsize=14); plt.ylabel("Energy Flux P",fontsize=14)
 plt.legend(fontsize=12); plt.grid(alpha=0.4); plt.tight_layout()
 plt.savefig("retrocausality_inverse_flux.png",dpi=400)
-plt.show()
