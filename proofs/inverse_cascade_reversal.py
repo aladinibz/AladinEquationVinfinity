@@ -18,4 +18,3 @@ plt.title("ALADIN ∞ ℂ(t) — Inverse Cascade Reversal by 43 Hz\nEgo Fragment
 plt.xlabel("Wavenumber k (inverse scale)",fontsize=14); plt.ylabel("Energy Spectrum E(k)",fontsize=14)
 plt.legend(fontsize=12); plt.grid(alpha=0.4); plt.tight_layout()
 plt.savefig("inverse_cascade_reversal.png",dpi=400)
-plt.show()

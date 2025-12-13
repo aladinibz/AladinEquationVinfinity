@@ -20,4 +20,3 @@ plt.title("ALADIN ∞ ℂ(t) — Three-Wave KZ Spectrum in Ego Turbulence\nTheta
 plt.xlabel("Frequency [Hz]",fontsize=14); plt.ylabel("Power Spectrum",fontsize=14)
 plt.legend(fontsize=11); plt.grid(alpha=0.4); plt.tight_layout()
 plt.savefig("three_wave_kz_ego_spectrum.png",dpi=400)
-plt.show()
