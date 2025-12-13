@@ -14,4 +14,3 @@ plt.xlabel("Time [s]",fontsize=14); plt.ylabel("Multifractal Width Δα",fontsiz
 plt.ylim(0.05,0.85); plt.legend(fontsize=12)
 plt.grid(alpha=0.4); plt.tight_layout()
 plt.savefig("multifractal_spectrum_collapse.png",dpi=400)
-plt.show()
