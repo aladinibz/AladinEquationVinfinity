@@ -14,4 +14,3 @@ plt.title("ALADIN ∞ ℂ(t) — Sheremet Validation\nRunning Speed → Turbulen
 plt.xlabel("Running Speed [cm/s]",fontsize=14); plt.ylabel("Turbulence Strength",fontsize=14)
 plt.legend(fontsize=12); plt.grid(alpha=0.4); plt.tight_layout()
 plt.savefig("sheremet_running_speed_turbulence.png",dpi=400)
-plt.show()
