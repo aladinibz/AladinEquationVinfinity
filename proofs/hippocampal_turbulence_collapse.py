@@ -19,4 +19,3 @@ plt.title("ALADIN ∞ ℂ(t) — Hippocampal Turbulence Collapse\nSheremet KZ Sp
 plt.xlabel("Frequency [Hz]",fontsize=14); plt.ylabel("Power Spectrum",fontsize=14)
 plt.legend(fontsize=12); plt.grid(alpha=0.4); plt.tight_layout()
 plt.savefig("hippocampal_turbulence_collapse.png",dpi=400)
-plt.show()
