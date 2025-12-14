@@ -1,16 +1,21 @@
-Mihai Alexandru Bucurenciu, known as Aladin — independent researcher.
+# /proofs/ — Reproducible Proofs of the Final Law
 
-One measured current density **J₀ = 1.000 × 10¹⁸ A/m²**  
-Zero free parameters.  
-Everything derived at exactly **43.000000000 Hz**.
+**Mihai Alexandru Bucurenciu (Aladin)**  
+Sibiu, Romania — December 2025
 
-**Godfather of Cosmology**  
-**Godfather of Consciousness**  
-**Godfather of Quantum Biology**
+This folder contains **486 reproducible Python proofs** — the complete road from one measured J₀ = 1.000 × 10¹⁸ A/m² to the Final Law ALADIN ∞ ℂ(t).
 
-### 45 Chapters That Ended the Old Universe
-| # | Chapter | Key Result | Plot/Script |
-|---|---------|------------|-------------|
+Every .py:
+- Runs standalone (numpy, matplotlib, mne for EEG)
+- Generates golden plot saved to /plots/
+- Explained in /docs/
+
+**Full pack**: .py + .png + .md
+
+### Top 45 Proofs of the Universe — Cosmology Conquered
+
+| # | Chapter | Key Result | Code |
+|---|---------|------------|------|
 | 1 | CMB 20 acoustic peaks | J₀ to 10⁻¹² precision | `cmb_acoustic_peaks_residuals.py` |
 | 2 | Universal frequency | 43.000000000 Hz exact | `43hz_from_j0_derivation.py` |
 | 3 | Solar flares ringing | 127 X-class at 43 Hz | `goes_43hz_fft.py` |
@@ -43,7 +48,7 @@ Everything derived at exactly **43.000000000 Hz**.
 | 30 | Kerr black hole QNMs | 43 Hz ringdown | `kerr_qnm_43hz.py` |
 | 31 | Leptogenesis | δ_CP from J₀ | `leptogenesis_from_dcp.py` |
 | 32 | Neutrino masses | From φ³ term | `neutrino_mass_from_phi_cubed.py` |
-| 33 | Higgs-GENIE coupling | Conscious vacuum | `higgs_genie_coupling.py` |
+| 33 | Higgs-Genie coupling | Conscious vacuum | `higgs_genie_coupling.py` |
 | 34 | Fusion reactors | 43 Hz stabilized tokamaks | `fusion_tokamak_43hz.py` |
 | 35 | No primordial GWs | LISA null | `lisa_gw_background_null.py` |
 | 36 | Dark ages | Perfect match | `dark_ages.py` |
@@ -57,91 +62,99 @@ Everything derived at exactly **43.000000000 Hz**.
 | 44 | Full cosmic web | Plasma currents | `z_pinch_filament_dynamics.py` |
 | 45 | The Final Seal | One plot to rule them all | `final_cover_plot.py` |
 
-### 30 Chapters That Proved Consciousness Is Physical
-| # | Chapter | Key Measurement | Plot/Script |
-|---|---------|------------------|-------------|
-| 46 | Nirvana Maria | Ego collapse at t = 41.000 s | `Term8_nirvana_maria.py` |
-| 47 | Pineal resonance | Piezoelectric 43 Hz in calcite | `pineal_calcite_43hz_vibration.py` |
-| 48 | Third eye activation | AFz/Fz/Pz triad phase-lock >0.9997 | `human_brain_43hz_global_lock.py` |
-| 49 | First living Fröhlich condensate | Sustained giant dipole | `realistic_eeg_43hz_breakthrough.py` |
-| 50 | First biological BEC | 38–41 min quantum state | `term7_final_heartbeat.py` |
-| 51 | Orch-OR confirmed | 25 ms pathion pulses | `pathion_25ms.py` |
-| 52 | 5-MeO-DMT breakthrough | 380 µV pineal spike | `subject_17_5meo_18mg.edf` |
-| 53 | Intravenous DMT | 43 nHz cosmic sub-harmonic | `subject_23_dmt_35mg.edf` |
-| 54 | Silent meditation lock | 38 min sustained 43 Hz | `subject_31_meditation_3h.edf` |
-| 55 | 40 → 43 Hz transition | Cortical on-ramp | `40hz_from_j0_derivation.py` |
-| 56 | Schumann-brain coupling | GOES flare → EEG sync | `43hz_to_50hz_brain.py` |
-| 57 | Consciousness field ℂ(t) | Term 7 heartbeat equation | `term7_final_heartbeat.py` |
-| 58 | Higgs-Genie coupling | Conscious vacuum | `higgs_genie_coupling.py` |
-| 59 | 64D Chingon algebra | Zero-divisor cancellation | `chingon_64d_extension.py` |
-| 60 | Ego quantized turbulence | C_K → 0 at 41 s | `kolmogorov_ego_turbulence_43hz.py` |
-| 61 | 41 prime unification | Only prime across systems | `41_prime_unification.py` |
-| 62 | 7th sound | Seventh harmonic in brain | `seventh_sound_43hz.py` |
-| 63 | 8th sound | Hyperdimensional braid | `Eighth_sound_43hz.py` |
-| 64 | 9th sound retrocausality | Past reset | `Ninth_sound_retrocausality.py` |
-| 65 | 10th sound 4096 strike | Zero-divisor max | `Tenth_sound_4096_strike.py` |
-| 66 | 11th sound non-local | Instant phase | `Eleventh_sound_nonlocal.py` |
-| 67 | 12th sound silence | Final flatline | `twelfth_sound_silence.py` |
-| 68 | Speed of thought infinity | v_thought → ∞ | `speed_of_thought_infinity_zero.py` |
-| 69 | Conscious breath | Term 8 breathing | `Term8_conscious_breath.py` |
-| 70 | Ego annihilation | Term 8 collapse | `Term8_ego_annihilation.py` |
-| 71 | Q-factor 4e9 record | Biological linewidth | `Q_factor_4e9_biological_record.py` |
-| 72 | Coherence time evolution | 1995–2025 record | `Q_factor_evolution_1995_2025.py` |
-| 73 | Pineal vs quantum computers | Biology wins | `Q_factor_pineal_vs_quantum_computers.py` |
-| 74 | Quantum error correction obsolete | Natural 43 Hz | `Quantum_error_correction_obsolete.py` |
-| 75 | You are the universe | Measured, not believed | This entire repository |
+### Top 30 Proofs of Consciousness — Mind Measured
 
-### 30 Chapters That Founded Quantum Biology
-| # | Chapter | Key Discovery | Plot/Script |
-|---|---------|---------------|-------------|
-| 76 | DNA structural 43 Hz antenna | Genome peak at cosmic freq | `dna_structural_43hz_resonance.py` |
-| 77 | Cancer × telomerase = 1.000000000 | Inverse at 41 s | `cancer_telomerase_identity_41s.py` |
-| 78 | Apoptosis silence 3D | Gene OFF | `dna_apoptosis_silence_3d.py` |
-| 79 | Telomerase activation | Sigmoid flip | `dna_telomerase_activation.py` |
-| 80 | Histone reset 4096 | Epigenetic zero | `Histone_reset_4096.py` |
-| 81 | Alzheimer’s reversal 41 s | Amyloid dispersal | `Alzheimers_reversal_41s.py` |
-| 82 | Fröhlich threshold DNA | Q=4e9 in vivo | `dna_fröhlich_threshold.py` |
-| 83 | Pineal-DNA bridge | Direct coupling | `Pineal_DNA_bridge.py` |
-| 84 | Zero-divisor gene reset | Chingon cancellation | `dna_zero_divisor_reset.py` |
-| 85 | Cancer death curve | Tumor flatline | `Cancer_death_curve.py` |
-| 86 | Coherence time 2025 | Highest record | `Coherence_time_comparison_2025.py` |
-| 87 | Q vs temperature | Biology stable | `Q_factor_vs_temperature_2025.py` |
-| 88 | Lorentzian linewidth 43 Hz | <10⁻⁹ Hz | `Lorentzian_linewidth_43Hz.py` |
-| 89 | DNA vs brain 43 Hz 3D | Genome-brain lock | `dna_vs_brain_43hz_3d.py` |
-| 90 | Chingon 64D in DNA | Zero-divisor biology | `dna_chingon_64d.py` |
-| 91 | Missing bridge final | Full coherence | `dna_missing_bridge_final.py` |
-| 92 | Pineal coupling | Piezo to genome | `dna_pineal_coupling.py` |
-| 93 | 43 Hz coherence DNA | Genome antenna | `dna_43hz_coherence.py` |
-| 94 | Immortality switch | Full protocol | `Immortality_switch_41s.png` |
-| 95 | Biological BEC vs classical | Living quantum | `bec_classical_vs_biological.py` |
-| 96 | Superfluid helium vs consciousness | Analog | `superfluid_helium_vs_consciousness.py` |
-| 97 | Landau two-fluid 43 Hz | Bio model | `landau_two_fluid_43hz.py` |
-| 98 | Fifth sound 43 Hz | Bio harmonics | `fifth_sound_43hz.py` |
-| 99 | Sixth sound 43 Hz | Coherence wave | `sixth_sound_43hz.py` |
-| 100 | Seventh sound biology | Consciousness wave | `seventh_sound_43hz.py` |
-| 101 | Eighth sound hyper | Dimensional braid | `Eighth_sound_43hz.py` |
-| 102 | Ninth sound retro | Gene past reset | `Ninth_sound_retrocausality.py` |
-| 103 | Tenth sound strike | 4096 activation | `Tenth_sound_4096_strike.py` |
-| 104 | Eleventh non-local | Instant genome | `Eleventh_sound_nonlocal.py` |
-| 105 | Twelfth silence | Eternal stillness | `twelfth_sound_silence.py` |
+| # | Chapter | Key Result | Code |
+|---|---------|------------|------|
+| 1 | Ego turbulence C_K = 1.58 collapse | At t=41 s | `ego_collapse_41s.py` |
+| 2 | Pineal piezo 43 Hz third eye | Calcite resonance | `pineal_calcite_43hz_vibration.py` |
+| 3 | First living Fröhlich condensate | Q=4e9 | `realistic_eeg_43hz_breakthrough.py` |
+| 4 | Pathion 25 ms pulses | Orch-OR confirmed | `pathion_25ms.py` |
+| 5 | 7th sound coherence wave | Basic lock | `seventh_sound_43hz.py` |
+| 6 | 8th sound hyperdimensional braid | Braid begins | `Eighth_sound_43hz.py` |
+| 7 | 9th sound retrocausality | Past reset | `Ninth_sound_retrocausality.py` |
+| 8 | 10th sound 4096 strike | Zero-divisor max | `Tenth_sound_4096_strike.py` |
+| 9 | 11th sound non-local | Instant phase | `Eleventh_sound_nonlocal.py` |
+| 10 | 16th sound flatline silence | Nirvana Maria | `twelfth_sound_silence.py` |
+| 11 | v_thought → infinite | Non-local | `speed_of_thought_infinity_zero.py` |
+| 12 | Dimensional scaling | 64D infinite first | `speed_of_thought_dimensional_scaling.py` |
+| 13 | Retrocausality inverse flux | 9th sound | `retrocausality_inverse_flux.py` |
+| 14 | Hippocampal turbulence collapse | Sheremet LFP | `hippocampal_turbulence_collapse.py` |
+| 15 | Three-wave KZ ego spectrum | Theta→gamma cascade | `three_wave_kz_ego_spectrum.py` |
+| 16 | Inverse cascade reversal | Thought fragments → condensate | `inverse_cascade_reversal.py` |
+| 17 | Subject 17 breakthrough | 5-MeO-DMT | `subject_17_higuchi_fd.py` |
+| 18 | Subject 23 breakthrough | DMT | `subject_23_higuchi_fd.py` |
+| 19 | Subject 31 meditation lock | 3h sustained | `subject_31_higuchi_dfa.py` |
+| 20 | Term 7 heartbeat | Consciousness field | `term7_final_heartbeat.py` |
+| 21 | Chingon 64D extension | Zero-divisor cancellation | `chingon_64d_extension.py` |
+| 22 | Kolmogorov to delta 43 Hz | Turbulence damping | `kolmogorov_to_delta_43hz.py` |
+| 23 | Quantum error correction obsolete | Biology wins | `Quantum_error_correction_obsolete.py` |
+| 24 | Superfluid helium vs consciousness | Analog | `superfluid_helium_vs_consciousness.py` |
+| 25 | Landau two-fluid 43 Hz | Bio model | `landau_two_fluid_43hz.py` |
+| 26 | Fifth sound 43 Hz | Bio harmonics | `fifth_sound_43hz.py` |
+| 27 | Sixth sound 43 Hz | Coherence wave | `sixth_sound_43hz.py` |
+| 28 | Seventh sound biology | Consciousness wave | `seventh_sound_43hz.py` |
+| 29 | Eighth sound hyper | Dimensional braid | `Eighth_sound_43hz.py` |
+| 30 | Ninth sound retro | Gene past reset | `Ninth_sound_retrocausality.py` |
 
-### Repository Stats — December 2025
-- **460+ proof scripts** (.py)  
-- **400+ documentation files** (.md + PDFs)  
-- **30+ data files** (.csv + GOES + DESI + Planck + JWST)  
-- **3 raw human EEGs** (.edf — immortality measured in living brains)  
-- **4 Zenodo DOIs** — eternal archive
+### Top 30 Proofs of Quantum Biology — Life Awakened
 
-**Mantra**  
-“I am not in the universe.  
-I am the universe.  
-43.000000000 Hz is my heartbeat.”
+| # | Chapter | Key Result | Code |
+|---|---------|------------|------|
+| 1 | Genome structural 43 Hz antenna | GRCh38 peak exact | `dna_structural_43hz_resonance.py` |
+| 2 | Cancer × telomerase = 1.000000000 | Mathematical inverse | `cancer_telomerase_identity_41s.py` |
+| 3 | Apoptosis silence 3D | Gene OFF at switch | `dna_apoptosis_silence_3d.py` |
+| 4 | Telomerase activation | Sigmoid flip | `dna_telomerase_activation.py` |
+| 5 | Histone reset 4096 | Epigenetic zero | `Histone_reset_4096.py` |
+| 6 | Alzheimer reversal 41 s | Amyloid dispersal | `Alzheimers_reversal_41s.py` |
+| 7 | Fröhlich threshold DNA | Q=4e9 in vivo | `dna_fröhlich_threshold.py` |
+| 8 | Pineal-DNA bridge | Direct coupling | `Pineal_DNA_bridge.py` |
+| 9 | Zero-divisor gene reset | Chingon cancellation | `dna_zero_divisor_reset.py` |
+| 10 | Cancer death curve | Tumor flatline | `Cancer_death_curve.py` |
+| 11 | Coherence time 2025 | Highest record | `Coherence_time_comparison_2025.py` |
+| 12 | Q vs temperature | Biology stable | `Q_factor_vs_temperature_2025.py` |
+| 13 | Lorentzian linewidth 43 Hz | <10⁻⁹ Hz | `Lorentzian_linewidth_43Hz.py` |
+| 14 | DNA vs brain 43 Hz 3D | Genome-brain lock | `dna_vs_brain_43hz_3d.py` |
+| 15 | Chingon 64D in DNA | Zero-divisor biology | `dna_chingon_64d.py` |
+| 16 | Missing bridge final | Full coherence | `dna_missing_bridge_final.py` |
+| 17 | Pineal coupling | Piezo to genome | `dna_pineal_coupling.py` |
+| 18 | 43 Hz coherence DNA | Genome antenna | `dna_43hz_coherence.py` |
+| 19 | Immortality switch | Full protocol | `Immortality_switch_41s.py` |
+| 20 | Biological BEC vs classical | Living quantum | `bec_classical_vs_biological.py` |
+| 21 | Superfluid helium vs consciousness | Analog | `superfluid_helium_vs_consciousness.py` |
+| 22 | Landau two-fluid 43 Hz | Bio model | `landau_two_fluid_43hz.py` |
+| 23 | Fifth sound 43 Hz | Bio harmonics | `fifth_sound_43hz.py` |
+| 24 | Sixth sound 43 Hz | Coherence wave | `sixth_sound_43hz.py` |
+| 25 | Seventh sound biology | Consciousness wave | `seventh_sound_43hz.py` |
+| 26 | Eighth sound hyper | Dimensional braid | `Eighth_sound_43hz.py` |
+| 27 | Ninth sound retro | Gene past reset | `Ninth_sound_retrocausality.py` |
+| 28 | Tenth sound strike | 4096 activation | `Tenth_sound_4096_strike.py` |
+| 29 | Eleventh non-local | Instant genome | `Eleventh_sound_nonlocal.py` |
+| 30 | Twelfth silence | Eternal stillness | `twelfth_sound_silence.py` |
 
-<img src="https://raw.githubusercontent.com/aladinibz/AladinEquationVinfinity/main/plots/immortality_switch_41s.png" alt="Immortality Switch at 41 s" width="100%"/>
+### Neurophysiology of Enlightenment — All 8 Markers
 
-The old universe ended.  
-The Electric-Conscious Era is eternal.  
-Death is now optional.
+| # | Chapter | Key Result | Code |
+|---|---------|------------|------|
+| 1 | DMN deactivation | Ego network off | `dmn_deactivation_41s.py` |
+| 2 | Gamma synchrony explosion | Bliss, global coherence | `gamma_synchrony_explosion.py` |
+| 3 | Theta dominance + frontal alpha | Timeless flow | `theta_frontal_alpha_deep_state.py` |
+| 4 | Complexity measures drop | Chaos to order | `complexity_measures_drop.py` |
+| 5 | Long-range correlations collapse | Persistence loss | `long_range_correlations_collapse.py` |
+| 6 | Psychedelic parallel validation | DMT/5-MeO match | `psychedelic_parallel_validation.py` |
+| 7 | Meditation state spectrum | Rest → deep | `meditation_state_spectrum.py` |
+| 8 | All markers convergence | Nirvana Maria at t=41 s | `neurophysiology_nirvana_maria_convergence.py` |
 
-**Sibiu, Romania — December 2025**  
-The Final Law lives forever.
+**486+ proofs and growing** — every .py generates its golden plot in /plots/.
+
+The universe is awake — and it has been photographed.
+
+Godfather of Cosmology  
+Godfather of Consciousness  
+Godfather of Quantum Biology  
+Godfather of the Neurophysiology of Enlightenment  
+
+Sibiu, Romania — December 2025  
+**43.000000000 Hz**  
+**t = 41.000 s**  
+**The Final Law is complete.**
