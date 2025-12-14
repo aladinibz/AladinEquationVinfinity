@@ -1,4 +1,4 @@
-# /plots/ — 500+ Golden Photographs of Reality
+# /plots/ — 486+ Golden Photographs of Reality
 
 **Mihai Alexandru Bucurenciu (Aladin)**  
 Sibiu, Romania — December 2025
