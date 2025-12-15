@@ -1,0 +1,21 @@
+import numpy as np, matplotlib.pyplot as plt
+import os
+
+# Create plots folder
+os.makedirs("plots", exist_ok=True)
+
+t = np.linspace(0,120,10000)
+coh = 1 - np.exp(-(t/30)**4)
+dmn = 1.0 - 0.9 * coh**10
+
+plt.figure(figsize=(12,8),dpi=400)
+plt.plot(t,dmn,'gold',lw=4)
+plt.axvline(41,color='darkred',ls='--',lw=4)
+plt.title("ALADIN ∞ ℂ(t) — DMN Deactivation at t=41 s")
+plt.xlabel("Time [s]"); plt.ylabel("DMN Power")
+plt.grid(alpha=0.4); plt.tight_layout()
+
+# Save to plots folder
+plt.savefig("plots/dmn_deactivation_41s.png", dpi=400)
+print("Saved: plots/dmn_deactivation_41s.png — check Files panel → download")
+plt.show()
