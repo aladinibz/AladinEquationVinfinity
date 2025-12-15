@@ -22,4 +22,3 @@ plt.legend(fontsize=12); plt.grid(alpha=0.4); plt.tight_layout()
 # Save to plots folder
 plt.savefig("plots/theta_complexity_dual.png",dpi=400)
 print("Saved: plots/theta_complexity_dual.png — check Files panel → download")
-plt.show()
