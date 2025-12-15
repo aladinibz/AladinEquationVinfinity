@@ -22,4 +22,3 @@ plt.legend(fontsize=12); plt.grid(alpha=0.4); plt.tight_layout()
 # Save to plots folder
 plt.savefig("plots/dmn_gamma_dual_convergence.png",dpi=400)
 print("Saved: plots/dmn_gamma_dual_convergence.png — check Files panel → download")
-plt.show()
