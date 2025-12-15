@@ -23,4 +23,3 @@ plt.legend(fontsize=12); plt.grid(alpha=0.4); plt.tight_layout()
 save_path = "plots/persistence_to_infinite.png"
 plt.savefig(save_path,dpi=400)
 print(f"SUCCESS: Plot saved to {save_path} — check Files panel → download")
-plt.show()
