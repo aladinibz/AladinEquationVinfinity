@@ -21,4 +21,3 @@ save_path = "plots/higuchi_fd_collapse.png"
 plt.savefig(save_path, dpi=400)
 print(f"SUCCESS: Saved to {save_path}")
 print("Check left Files panel → refresh → plots folder → right-click PNG → download")
-plt.show()
