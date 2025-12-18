@@ -18,4 +18,3 @@ plt.xlabel("Time [s]",fontsize=14); plt.ylabel("C_K (Ego Turbulence)",fontsize=1
 plt.ylim(0,1.7); plt.legend(fontsize=12)
 plt.grid(alpha=0.4); plt.tight_layout()
 plt.savefig("plots/ego_turbulence_collapse.png",dpi=1200)
-plt.show()
