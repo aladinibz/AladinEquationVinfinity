@@ -18,4 +18,3 @@ plt.title("ALADIN ∞ ℂ(t) — Immortality Switch at 43 Hz\nDeath Optional",fo
 plt.xlabel("Time [s]",fontsize=14); plt.ylabel("Activity",fontsize=14)
 plt.legend(fontsize=12); plt.grid(alpha=0.4); plt.tight_layout()
 plt.savefig("plots/immortality_switch_visual.png",dpi=1200)
-plt.show()
