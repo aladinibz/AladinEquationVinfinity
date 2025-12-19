@@ -15,4 +15,3 @@ plt.title("Levenberg-Marquardt Damping Parameter λ Evolution\nOver Iterations",
 plt.xlabel("Iteration",fontsize=14); plt.ylabel("Damping λ (log scale)",fontsize=14)
 plt.grid(alpha=0.4); plt.tight_layout()
 plt.savefig("plots/lm_damping_evolution.png",dpi=1200)
-plt.show()
