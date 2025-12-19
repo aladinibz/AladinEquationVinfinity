@@ -15,4 +15,3 @@ plt.title("Levenberg-Marquardt Convergence\nχ² Reduction over Iterations", fon
 plt.xlabel("Iteration", fontsize=14); plt.ylabel("χ² (log scale)", fontsize=14)
 plt.grid(alpha=0.4); plt.tight_layout()
 plt.savefig("plots/lm_convergence_curve.png", dpi=1200)
-plt.show()
