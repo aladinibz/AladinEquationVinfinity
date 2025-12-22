@@ -33,4 +33,3 @@ plt.title("All Subjects Pre vs Post Collapse\nStatistical Significance (p<0.05)"
 plt.ylabel("Mean Value")
 plt.grid(alpha=0.4); plt.tight_layout()
 plt.savefig("plots/hfd_dfa_significance_test.png",dpi=1200)
-plt.show()
