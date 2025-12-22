@@ -18,4 +18,3 @@ plt.title("All Subjects Higuchi FD Average with Error Bars\nEgo Complexity Colla
 plt.ylabel("Higuchi FD")
 plt.grid(alpha=0.4); plt.legend(); plt.tight_layout()
 plt.savefig("plots/all_subjects_hfd_bar.png",dpi=1200)
-plt.show()
