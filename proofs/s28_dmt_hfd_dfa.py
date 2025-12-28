@@ -47,7 +47,6 @@ try:
 
  save=os.path.join(D,'s28_dmt_hfd_dfa.png')
  plt.savefig(save,dpi=200,bbox_inches='tight')
- plt.show()
  display(Image(save))
 
 except Exception as e:
