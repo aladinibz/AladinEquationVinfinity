@@ -52,5 +52,4 @@ plt.legend(); plt.grid(True, ls='--', alpha=.5)
 
 save = os.path.join(D, 's3_dmt_hfd_dfa.png')
 plt.savefig(save, dpi=200, bbox_inches='tight')
-plt.show()
 display(Image(save))
