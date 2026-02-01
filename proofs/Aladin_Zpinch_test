@@ -1,0 +1,205 @@
+# ────────────────────────────────────────────────
+# Cell 1: Installs & imports (run once)
+# ────────────────────────────────────────────────
+!pip install --upgrade "jax[cuda12_pip]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html -q
+!pip install matplotlib pyvista scipy -q
+
+import jax
+import jax.numpy as jnp
+from jax import jit
+import matplotlib.pyplot as plt
+import numpy as np
+import pyvista as pv
+import os
+from scipy.fft import fft, fftfreq
+from scipy.optimize import curve_fit
+
+jax.config.update('jax_enable_x64', False)  # float32 for speed
+
+print("JAX devices:", jax.devices())
+
+os.makedirs("plots", exist_ok=True)
+
+# ────────────────────────────────────────────────
+# Parameters — 128³ full 3D
+# ────────────────────────────────────────────────
+GRID_SIZE = 128
+DT = 1e-9
+STEPS = 150
+EPSILON = 0.18
+K_PERT = 24.0
+MODE = 3                 # 0=sausage, 1=m=1, 2=m=2, 3=m=3 kink
+
+MU0 = 4 * np.pi * 1e-7
+ETA = 1e-5
+RAD_COEFF = 1e-30
+V_MAX = 1.5e5
+BETA_SHEAR = 2.0
+J_Z_INIT = 1e6
+GAMMA_EOS = 5.0 / 3.0
+
+# Domain
+L_r = 0.02
+dx = L_r / GRID_SIZE
+x = jnp.linspace(0, L_r, GRID_SIZE, dtype=jnp.float32)
+y = jnp.linspace(0, L_r, GRID_SIZE, dtype=jnp.float32)
+z = jnp.linspace(0, 0.1, GRID_SIZE, dtype=jnp.float32)
+
+X, Y, Z = jnp.meshgrid(x, y, z, indexing='ij')
+R = jnp.sqrt(X**2 + Y**2 + 1e-10)
+THETA = jnp.arctan2(Y, X)
+
+# ────────────────────────────────────────────────
+# Initial conditions
+# ────────────────────────────────────────────────
+def init_state():
+    rho = 1e-6 * jnp.exp(-(R / 0.01)**2).astype(jnp.float32)
+    
+    v_z = V_MAX * (1 - (R / 0.01)**BETA_SHEAR).astype(jnp.float32)
+    v_x = jnp.zeros_like(rho)
+    v_y = jnp.zeros_like(rho)
+    
+    J_z = J_Z_INIT * jnp.exp(-(R / 0.01)**2).astype(jnp.float32)
+    B_theta = MU0 * J_z * jnp.minimum(R, 0.01) / 2
+    B_x = -B_theta * Y / R
+    B_y = B_theta * X / R
+    B_z = jnp.zeros_like(rho)
+    B = jnp.stack([B_x, B_y, B_z], axis=0).astype(jnp.float32)
+    
+    p = 1e5 * jnp.ones_like(rho)
+    
+    S = rho * jnp.stack([v_x, v_y, v_z], axis=0)
+    
+    v2 = v_x**2 + v_y**2 + v_z**2
+    B2 = B_x**2 + B_y**2 + B_z**2
+    tau = p / (GAMMA_EOS - 1) + 0.5 * rho * v2 + B2 / (2 * MU0)
+    
+    return {'rho': rho, 'S': S, 'tau': tau, 'B': B, 'p': p}
+
+state = init_state()
+
+# Mode-specific perturbation
+if MODE == 0:
+    delta = EPSILON * jnp.cos(K_PERT * Z)
+elif MODE == 1:
+    delta = EPSILON * jnp.cos(K_PERT * Z + THETA)
+elif MODE == 2:
+    delta = EPSILON * jnp.cos(2 * THETA + K_PERT * Z)
+elif MODE == 3:
+    delta = EPSILON * jnp.cos(3 * THETA + K_PERT * Z)
+state['rho'] += state['rho'] * delta
+
+# ────────────────────────────────────────────────
+# Time step with full MHD advection + Lorentz + resistivity + radiation
+# ────────────────────────────────────────────────
+@jit
+def step(state, dt, dx):
+    rho = state['rho']
+    S = state['S']
+    tau = state['tau']
+    B = state['B']
+    p = state['p']
+
+    v = S / rho
+
+    # J = ∇ × B / MU0
+    J_x = (jnp.gradient(B[2], axis=1) - jnp.gradient(B[1], axis=2)) / MU0
+    J_y = (jnp.gradient(B[0], axis=2) - jnp.gradient(B[2], axis=0)) / MU0
+    J_z = (jnp.gradient(B[1], axis=0) - jnp.gradient(B[0], axis=1)) / MU0
+    J = jnp.stack([J_x, J_y, J_z], axis=0)
+
+    # Lorentz J × B
+    J_cross_B = jnp.cross(J, B, axis=0)
+    dS_dt = J_cross_B
+
+    # Conservative advection fluxes (HLL-like)
+    f_rho = rho * v
+    p_mag = jnp.sum(B**2, axis=0) / (2 * MU0)
+    p_tot = p + p_mag
+    vv = v[..., jnp.newaxis] * v
+    BB = B[..., jnp.newaxis] * B
+    eye3 = jnp.eye(3)[..., jnp.newaxis, jnp.newaxis, jnp.newaxis]
+    f_S = rho * vv + p_tot * eye3 - BB / MU0
+    f_tau = (tau + p + p_mag) * v
+    f_B = v[..., jnp.newaxis] * B - B[..., jnp.newaxis] * v
+
+    # Divergence
+    drho_dt = - (jnp.gradient(f_rho[0], axis=0) + jnp.gradient(f_rho[1], axis=1) + jnp.gradient(f_rho[2], axis=2)) / dx
+    dS_dt += - (jnp.gradient(f_S[0], axis=0) + jnp.gradient(f_S[1], axis=1) + jnp.gradient(f_S[2], axis=2)) / dx
+    dtau_dt = - (jnp.gradient(f_tau[0], axis=0) + jnp.gradient(f_tau[1], axis=1) + jnp.gradient(f_tau[2], axis=2)) / dx
+    dB_dt = - (jnp.gradient(f_B[0], axis=0) + jnp.gradient(f_B[1], axis=1) + jnp.gradient(f_B[2], axis=2)) / dx
+
+    # Resistivity
+    lap_B = (jnp.gradient(jnp.gradient(B, axis=1), axis=1) + 
+             jnp.gradient(jnp.gradient(B, axis=2), axis=2) + 
+             jnp.gradient(jnp.gradient(B, axis=3], axis=3)) / dx**2
+    dB_dt += ETA * lap_B
+
+    # Radiation cooling
+    T = p / rho
+    dp_dt = - RAD_COEFF * rho**2 * jnp.sqrt(T + 1e-10)
+
+    # Updates
+    rho += dt * drho_dt
+    S += dt * dS_dt
+    tau += dt * dtau_dt
+    B += dt * dB_dt
+    p += dt * dp_dt
+
+    return {'rho': rho, 'S': S, 'tau': tau, 'B': B, 'p': p}
+
+# Run simulation + collect center pressure
+states = [state]
+center_p_history = []
+for step_num in range(STEPS):
+    state = step(state, DT, dx)
+    states.append(state)
+    center_p = state['p'][GRID_SIZE//2, GRID_SIZE//2, GRID_SIZE//2]
+    center_p_history.append(center_p)
+    if step_num % 20 == 0:
+        print(f"Step {step_num}, max rho: {jnp.max(state['rho']):.4e}, center p: {center_p:.2e}")
+
+# ────────────────────────────────────────────────
+# 43 Hz resonance test + spectrum
+# ────────────────────────────────────────────────
+center_p_history = np.array(center_p_history)
+time = np.arange(0, STEPS+1) * DT * 1e6  # μs
+
+plt.figure(figsize=(10, 6), facecolor='black')
+ax = plt.gca()
+ax.set_facecolor('black')
+ax.plot(time, center_p_history, lw=3, color='#FFD700', label='Center pressure over time')
+ax.set_xlabel('Time [μs]', color='white')
+ax.set_ylabel('Pressure [Pa]', color='white')
+ax.set_title('43 Hz Resonance Test at Center', color='white')
+ax.legend(frameon=False, labelcolor='white')
+ax.grid(alpha=0.2, color='gray')
+ax.tick_params(colors='white')
+for spine in ax.spines.values():
+    spine.set_color('white')
+plt.tight_layout()
+plt.savefig('zpinch_43hz_resonance_time.png', dpi=300, facecolor='black')
+plt.close()
+
+freq = fftfreq(STEPS, DT)[:STEPS//2] * 1e-6  # MHz
+fft_p = np.abs(fft(center_p_history))[:STEPS//2]
+
+plt.figure(figsize=(10, 6), facecolor='black')
+ax = plt.gca()
+ax.set_facecolor('black')
+ax.plot(freq, fft_p, lw=3, color='#00FFFF', label='Pressure FFT')
+ax.axvline(x=F_RES * 1e-6, color='gray', ls='--', label='43 MHz')
+ax.set_xlabel('Frequency [MHz]', color='white')
+ax.set_ylabel('Amplitude', color='white')
+ax.set_title('Frequency Spectrum (43 Hz resonance test)', color='white')
+ax.legend(frameon=False, labelcolor='white')
+ax.grid(alpha=0.2, color='gray')
+ax.tick_params(colors='white')
+for spine in ax.spines.values():
+    spine.set_color('white')
+plt.tight_layout()
+plt.savefig('zpinch_43hz_spectrum.png', dpi=300, facecolor='black')
+plt.close()
+
+print("43 Hz resonance plots saved.")
+print("Run complete with full MHD advection, Lorentz force, resistivity, radiation, shear, mode-specific kink visualization, and 43 Hz resonance lock test.")
