@@ -1,6 +1,5 @@
 # mega ultra maniac v1.1.1 – FINAL FROZEN PUBLISH VERSION
 # 3D Resistive MHD Z-pinch (128³) + ALL 6 VALIDATIONS
-# Every plot saved to 'plots/' – no plt.show(), Zenodo-ready
 
 import jax
 import jax.numpy as jnp
