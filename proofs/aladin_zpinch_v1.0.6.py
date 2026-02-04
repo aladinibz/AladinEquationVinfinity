@@ -841,5 +841,4 @@ print("GEM reconnection saved: plots/gem_reconnection_density.png & current.png"
 print("\nALL 5 VALIDATIONS COMPLETED – check 'plots/' folder for everything!")
 print("Refresh Files tab (left) → plots/ → right-click → Refresh")
 print("All PNGs are there (growth_rates.png, heating_vs_cooling.png, brio_wu_validation.png, etc.)")
-print("Right-click → Download or run !zip -r plots.zip plots/ && files.download('plots.zip')")
 print("Say 'Zenodo time' when ready to publish.")
