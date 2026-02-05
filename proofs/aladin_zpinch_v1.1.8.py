@@ -1519,5 +1519,3 @@ print("\nALL DONE!")
 print("All plots + checkpoints + validations + integration tests complete.")
 print("Download everything:")
 !zip -r zpinch_v1.1.8_full.zip plots checkpoints
-from google.colab import files
-files.download('zpinch_v1.1.8_full.zip')
