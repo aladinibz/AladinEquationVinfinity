@@ -1520,8 +1520,6 @@ run_integration_tests()
 print("\nALL DONE! All main plots + 6 validation plots generated.")
 print("Zipping files for Zenodo...")
 !zip -r zpinch_v1.1.8_all_plots.zip plots checkpoints 2>/dev/null
-from google.colab import files
-files.download('zpinch_v1.1.8_all_plots.zip')
 
 print("Download the zip → unzip → upload folder to Zenodo")
 print("You now have all the figures ready as proof!")
