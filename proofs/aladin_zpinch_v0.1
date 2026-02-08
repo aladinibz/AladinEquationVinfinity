@@ -1,0 +1,406 @@
+# Z-PINCH v0.1 – REAL 3D CYLINDRICAL MHD BASICS (64×64×64 grid) – FINAL PUBLISH-READY
+# Pure NumPy – Bennett equilibrium – m=0 & m=1 seeding – full MHD + resistivity + reconnection proxy + 10 PLOTS + SMOOTH FADE ANIMATION
+
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
+import os
+from tqdm import tqdm
+
+os.makedirs("plots", exist_ok=True)
+
+print("=== Z-PINCH v0.1 – REAL 3D CYLINDRICAL MHD BASICS (64³) – FINAL ===")
+
+# ─── GRID ───────────────────────────────────────────────────────────────────
+Nr = Ntheta = Nz = 64
+
+r_max = 0.02
+z_max = 0.1
+
+dr = r_max / Nr
+dtheta = 2 * np.pi / Ntheta
+dz = z_max / Nz
+
+r = np.linspace(dr/2, r_max - dr/2, Nr)
+theta = np.linspace(0, 2*np.pi, Ntheta, endpoint=False)
+z = np.linspace(dz/2, z_max - dz/2, Nz)
+
+R, Theta, Z = np.meshgrid(r, theta, z, indexing='ij')
+R = np.maximum(R, dr / 2)
+
+# Constants
+gamma = 5.0 / 3.0
+mu0 = 4 * np.pi * 1e-7
+eta = 5e-6
+rho_min = 1e-9
+energy_floor = 1e-12
+p_min = 1e-12
+cfl = 0.3
+
+# ─── BENNETT EQUILIBRIUM ─────────────────────────────────────────────────────
+rho0 = 1e-6
+a = 0.005
+
+rho = rho0 / (1 + (R / a)**2)**2
+
+J_z = 2e6 * np.exp(-(R / a)**2)
+
+B_theta = mu0 * J_z * np.minimum(R, a) / 2
+B_theta = np.nan_to_num(B_theta, nan=0.0)
+
+p = np.zeros_like(rho)
+p_outer = 1e4
+p[:, :, -1] = p_outer
+for ir in range(Nr-2, -1, -1):
+    p[ir] = p[ir+1] + J_z[ir] * B_theta[ir] * dr
+
+e = p / (gamma - 1)
+
+v_r = v_theta = v_z = np.zeros_like(rho)
+
+B_r = np.zeros_like(rho)
+B_z = np.zeros_like(rho)
+
+print("Bennett equilibrium ready")
+
+# ─── PERTURBATION ───────────────────────────────────────────────────────────
+eps_rho = 0.02
+eps_v   = 5e3
+k_z     = 60
+
+rho += eps_rho * rho * np.cos(k_z * Z) * np.exp(-(R / a)**2)
+rho += eps_rho * rho * np.cos(Theta + k_z * Z) * np.exp(-(R / a)**2)
+
+v_z += eps_v * np.sin(k_z * Z) * np.exp(-(R / a)**2)
+v_theta += eps_v * np.sin(Theta + k_z * Z) * np.exp(-(R / a)**2)
+
+rho = np.maximum(rho, rho_min)
+
+print("m=0 & m=1 seeded + velocity seeds")
+
+# ─── TIME LOOP ──────────────────────────────────────────────────────────────
+steps = 250
+times = []
+pinch_radii = []
+m0_amps = []
+m1_amps = []
+total_masses_norm = []
+total_energies_norm = []
+total_momx_norm = []
+total_momy_norm = []
+total_momz_norm = []
+total_angular_momz_norm = []
+total_mag_energies_norm = []
+max_J2 = []
+density_history = []  # for animation
+
+vol = R * dr * dtheta * dz
+
+mass0 = np.sum(rho * vol)
+E0 = np.sum(e * vol) + np.sum(0.5 * rho * (v_r**2 + v_theta**2 + v_z**2) * vol) + np.sum(0.5 * (B_r**2 + B_theta**2 + B_z**2) / mu0 * vol)
+momx0 = np.sum(rho * v_r * vol)
+momy0 = np.sum(rho * v_theta * vol)
+momz0 = np.sum(rho * v_z * vol)
+L_z0 = np.sum(rho * R * v_theta * vol)
+mag_E0 = np.sum(0.5 * (B_r**2 + B_theta**2 + B_z**2) / mu0 * vol)
+
+print("Starting evolution...")
+for step in tqdm(range(steps), desc="Step", unit="it"):
+    cs = np.sqrt(gamma * p / rho)
+    vA = np.sqrt((B_r**2 + B_theta**2 + B_z**2) / (mu0 * rho + 1e-20))
+    speed_max = np.nanmax(cs + vA) + 1e-10
+    dt = cfl * min(dr, dz) / speed_max
+    dt = min(dt, 5e-10)
+
+    # Continuity – flux form
+    flux_rhov_r = R * rho * v_r
+    div_rhov_r = (np.roll(flux_rhov_r, -1, axis=0) - flux_rhov_r) / dr
+    flux_rhov_theta = rho * v_theta
+    div_rhov_theta = (np.roll(flux_rhov_theta, -1, axis=1) - flux_rhov_theta) / (R * dtheta)
+    flux_rhov_z = rho * v_z
+    div_rhov_z = (np.roll(flux_rhov_z, -1, axis=2) - flux_rhov_z) / dz
+    rho -= dt * (div_rhov_r + div_rhov_theta + div_rhov_z)
+
+    # Momentum – full J×B
+    curl_B_r = (np.roll(B_z, -1, axis=1) - B_z) / (R * dtheta) - (np.roll(B_theta, -1, axis=2) - B_theta) / dz
+    curl_B_theta = (np.roll(B_r, -1, axis=2) - B_r) / dz - (np.roll(B_z, -1, axis=0) - B_z) / dr
+    curl_B_z = (np.roll(B_theta, -1, axis=0) - B_theta) / dr - (np.roll(B_r, -1, axis=1) - B_r) / (R * dtheta) + B_theta / R
+
+    J_r = curl_B_r / mu0
+    J_theta = curl_B_theta / mu0
+    J_z = curl_B_z / mu0
+
+    JxB_r = J_theta * B_z - J_z * B_theta
+    JxB_theta = J_z * B_r - J_r * B_z
+    JxB_z = J_r * B_theta - J_theta * B_r
+
+    grad_p_r = (np.roll(p, -1, axis=0) - p) / dr
+    grad_p_theta = (np.roll(p, -1, axis=1) - p) / (R * dtheta)
+    grad_p_z = (np.roll(p, -1, axis=2) - p) / dz
+
+    v_r -= dt * (grad_p_r / rho + JxB_r / rho - v_theta**2 / R)
+    v_theta -= dt * (grad_p_theta / rho + JxB_theta / rho + v_r * v_theta / R)
+    v_z -= dt * (grad_p_z / rho + JxB_z / rho)
+
+    # Energy – flux form
+    div_ev_r = (np.roll(R * (e + p) * v_r, -1, axis=0) - R * (e + p) * v_r) / (R * dr)
+    div_ev_theta = (np.roll((e + p) * v_theta, -1, axis=1) - (e + p) * v_theta) / (R * dtheta)
+    div_ev_z = (np.roll((e + p) * v_z, -1, axis=2) - (e + p) * v_z) / dz
+    e -= dt * (div_ev_r + div_ev_theta + div_ev_z)
+
+    # Frozen-in advection
+    v_cross_B_r = v_theta * B_z - v_z * B_theta
+    v_cross_B_theta = v_z * B_r - v_r * B_z
+    v_cross_B_z = v_r * B_theta - v_theta * B_r
+
+    curl_vB_r = (np.roll(v_cross_B_z, -1, axis=1) - v_cross_B_z) / (R * dtheta) - (np.roll(v_cross_B_theta, -1, axis=2) - v_cross_B_theta) / dz
+    curl_vB_theta = (np.roll(v_cross_B_r, -1, axis=2) - v_cross_B_r) / dz - (np.roll(v_cross_B_z, -1, axis=0) - v_cross_B_z) / dr
+    curl_vB_z = (np.roll(v_cross_B_theta, -1, axis=0) - v_cross_B_theta) / dr - (np.roll(v_cross_B_r, -1, axis=1) - v_cross_B_r) / (R * dtheta) + v_cross_B_theta / R
+
+    B_r += dt * curl_vB_r
+    B_theta += dt * curl_vB_theta
+    B_z += dt * curl_vB_z
+
+    # Resistivity diffusion
+    for B_comp in [B_r, B_theta, B_z]:
+        lap_r = (np.roll(B_comp, -1, axis=0) + np.roll(B_comp, 1, axis=0) - 2*B_comp) / dr**2
+        lap_theta = (np.roll(B_comp, -1, axis=1) + np.roll(B_comp, 1, axis=1) - 2*B_comp) / (R**2 * dtheta**2)
+        lap_z = (np.roll(B_comp, -1, axis=2) + np.roll(B_comp, 1, axis=2) - 2*B_comp) / dz**2
+        B_comp += dt * eta * (lap_r + lap_theta + lap_z)
+
+    # Ohmic heating
+    J2 = (curl_B_r**2 + curl_B_theta**2 + curl_B_z**2) / mu0**2
+    ohmic = eta * J2
+    e += dt * ohmic
+
+    # Floors
+    rho = np.maximum(rho, rho_min)
+    e = np.maximum(e, energy_floor)
+    p = np.maximum((gamma - 1) * e, p_min)
+
+    # Diagnostics
+    rho_mid = rho[:, :, Nz//2]
+    r_weighted = np.sum(r[:, None] * rho_mid) / (np.sum(rho_mid) + 1e-12)
+    pinch_radii.append(r_weighted)
+
+    rho_theta = rho_mid.mean(axis=0)
+    fft = np.fft.fft(rho_theta - np.mean(rho_theta))
+    m0 = np.abs(fft[0]) / Ntheta
+    m1 = np.abs(fft[1]) / Ntheta
+    m0_amps.append(m0)
+    m1_amps.append(m1)
+
+    # Conservation
+    total_mass = np.sum(rho * vol)
+    total_masses_norm.append(total_mass / mass0)
+
+    E_int = np.sum(e * vol)
+    E_kin = np.sum(0.5 * rho * (v_r**2 + v_theta**2 + v_z**2) * vol)
+    E_mag = np.sum(0.5 * (B_r**2 + B_theta**2 + B_z**2) / mu0 * vol)
+    total_E = E_int + E_kin + E_mag
+    total_energies_norm.append(total_E / E0)
+
+    momx = np.sum(rho * v_r * vol)
+    momy = np.sum(rho * v_theta * vol)
+    momz = np.sum(rho * v_z * vol)
+    total_momx_norm.append(momx / momx0 if momx0 != 0 else momx)
+    total_momy_norm.append(momy / momy0 if momy0 != 0 else momy)
+    total_momz_norm.append(momz / momz0 if momz0 != 0 else momz)
+
+    L_z = np.sum(rho * R * v_theta * vol)
+    total_angular_momz_norm.append(L_z / L_z0 if L_z0 != 0 else L_z)
+
+    mag_E = np.sum(0.5 * (B_r**2 + B_theta**2 + B_z**2) / mu0 * vol)
+    total_mag_energies_norm.append(mag_E / mag_E0)
+
+    max_J2.append(np.max(J2))
+
+    # Save density for animation every 10 steps
+    if step % 10 == 0:
+        density_history.append(rho[Ntheta//2, :, :].copy())
+
+    times.append(step * dt * 1e6)
+
+times = np.array(times)
+pinch_radii = np.array(pinch_radii)
+m0_amps = np.array(m0_amps)
+m1_amps = np.array(m1_amps)
+total_masses_norm = np.array(total_masses_norm)
+total_energies_norm = np.array(total_energies_norm)
+total_momx_norm = np.array(total_momx_norm)
+total_momy_norm = np.array(total_momy_norm)
+total_momz_norm = np.array(total_momz_norm)
+total_angular_momz_norm = np.array(total_angular_momz_norm)
+total_mag_energies_norm = np.array(total_mag_energies_norm)
+max_J2 = np.array(max_J2)
+
+print("Evolution finished – saving 10 plots + animation...")
+
+# ─── STATIC PLOTS (9) ───────────────────────────────────────────────────────
+plt.style.use('dark_background')
+
+# 1. Initial density vs r
+rho_r_init = rho[:, :, Nz//2].mean(axis=1)
+plt.figure(figsize=(8, 5))
+plt.plot(r * 100, rho_r_init, color='lime', lw=2.5)
+plt.title("v0.1 – Initial Density vs r (mid-z)")
+plt.xlabel("r [cm]")
+plt.ylabel("Density [kg/m³]")
+plt.grid(alpha=0.3)
+plt.savefig("plots/1_initial_density_vs_r.png", dpi=300, bbox_inches='tight')
+plt.close()
+
+# 2. Pinch radius vs time
+plt.figure(figsize=(8, 5))
+plt.plot(times, pinch_radii * 100, color='cyan', lw=2.5)
+plt.title("v0.1 – Pinch Radius Evolution")
+plt.xlabel("Time [μs]")
+plt.ylabel("Radius [cm]")
+plt.grid(alpha=0.3)
+plt.savefig("plots/2_pinch_radius_vs_time.png", dpi=300, bbox_inches='tight')
+plt.close()
+
+# 3. Mode amplitudes
+plt.figure(figsize=(8, 5))
+plt.semilogy(times, m0_amps, color='yellow', lw=2.5, label='m=0')
+plt.semilogy(times, m1_amps, color='orange', lw=2.5, label='m=1')
+plt.title("v0.1 – Mode Amplitudes")
+plt.xlabel("Time [μs]")
+plt.ylabel("Amplitude (log)")
+plt.legend()
+plt.grid(alpha=0.3)
+plt.savefig("plots/3_mode_amplitudes.png", dpi=300, bbox_inches='tight')
+plt.close()
+
+# 4. Final density r-z slice
+plt.figure(figsize=(8, 6))
+plt.imshow(rho[Ntheta//2, :, :].T, extent=[0, z_max*100, r_max*100, 0],
+           cmap='inferno', aspect='auto', origin='lower')
+plt.colorbar(label='Density [kg/m³]')
+plt.title("v0.1 – Final Density r-z Slice (mid-θ)")
+plt.xlabel("z [cm]")
+plt.ylabel("r [cm]")
+plt.savefig("plots/4_final_density_rz_slice.png", dpi=300, bbox_inches='tight')
+plt.close()
+
+# 5. Energy conservation
+plt.figure(figsize=(8, 5))
+plt.plot(times, total_energies_norm, color='magenta', lw=2.5)
+plt.axhline(1, color='gray', ls='--', label='Ideal')
+plt.title("v0.1 – Energy Conservation (E / E₀)")
+plt.xlabel("Time [μs]")
+plt.ylabel("Normalized Energy")
+plt.legend()
+plt.grid(alpha=0.3)
+plt.savefig("plots/5_energy_conservation.png", dpi=300, bbox_inches='tight')
+plt.close()
+
+# 6. Mass conservation
+plt.figure(figsize=(8, 5))
+plt.plot(times, total_masses_norm, color='green', lw=2.5)
+plt.axhline(1, color='gray', ls='--', label='Ideal')
+plt.title("v0.1 – Mass Conservation (M / M₀)")
+plt.xlabel("Time [μs]")
+plt.ylabel("Normalized Mass")
+plt.legend()
+plt.grid(alpha=0.3)
+plt.savefig("plots/6_mass_conservation.png", dpi=300, bbox_inches='tight')
+plt.close()
+
+# 7. Momentum conservation
+plt.figure(figsize=(8, 5))
+plt.plot(times, total_momx_norm, color='red', lw=2.5, label='x')
+plt.plot(times, total_momy_norm, color='blue', lw=2.5, label='y')
+plt.plot(times, total_momz_norm, color='green', lw=2.5, label='z')
+plt.axhline(0, color='gray', ls='--', label='Ideal')
+plt.title("v0.1 – Momentum Conservation (p / p₀)")
+plt.xlabel("Time [μs]")
+plt.ylabel("Normalized Momentum")
+plt.legend()
+plt.grid(alpha=0.3)
+plt.savefig("plots/7_momentum_conservation.png", dpi=300, bbox_inches='tight')
+plt.close()
+
+# 8. Angular momentum conservation
+plt.figure(figsize=(8, 5))
+plt.plot(times, total_angular_momz_norm, color='purple', lw=2.5)
+plt.axhline(1, color='gray', ls='--', label='Ideal')
+plt.title("v0.1 – Angular Momentum Conservation (L_z / L_z0)")
+plt.xlabel("Time [μs]")
+plt.ylabel("Normalized L_z")
+plt.legend()
+plt.grid(alpha=0.3)
+plt.savefig("plots/8_angular_momentum_conservation.png", dpi=300, bbox_inches='tight')
+plt.close()
+
+# 9. Magnetic energy conservation
+plt.figure(figsize=(8, 5))
+plt.plot(times, total_mag_energies_norm, color='blue', lw=2.5)
+plt.axhline(1, color='gray', ls='--', label='Ideal')
+plt.title("v0.1 – Magnetic Energy Conservation (E_mag / E_mag0)")
+plt.xlabel("Time [μs]")
+plt.ylabel("Normalized E_mag")
+plt.legend()
+plt.grid(alpha=0.3)
+plt.savefig("plots/9_magnetic_energy_conservation.png", dpi=300, bbox_inches='tight')
+plt.close()
+
+# 10. Reconnection proxy
+plt.figure(figsize=(8, 5))
+plt.plot(times, max_J2, color='red', lw=2.5)
+plt.title("v0.1 – Reconnection Proxy (max J² vs time)")
+plt.xlabel("Time [μs]")
+plt.ylabel("Max J²")
+plt.grid(alpha=0.3)
+plt.savefig("plots/10_reconnection_proxy.png", dpi=300, bbox_inches='tight')
+plt.close()
+
+# ─── ANIMATION – smooth fade ────────────────────────────────────────────────
+fig, ax = plt.subplots(figsize=(8, 6))
+im = ax.imshow(density_history[0], extent=[0, z_max*100, r_max*100, 0],
+               cmap='inferno', aspect='auto', origin='lower', vmin=rho0*0.5, vmax=rho0*3)
+ax.set_title("Density r-z Slice Evolution (mid-θ)")
+ax.set_xlabel("z [cm]")
+ax.set_ylabel("r [cm]")
+cbar = fig.colorbar(im, ax=ax, label='Density [kg/m³]')
+
+def update(frame):
+    alpha = frame % 1.0
+    idx = int(frame)
+    if idx + 1 < len(density_history):
+        blended = (1 - alpha) * density_history[idx] + alpha * density_history[idx + 1]
+    else:
+        blended = density_history[idx]
+    im.set_array(blended)
+    ax.set_title(f"Density r-z Slice Evolution (mid-θ) – step {idx*10}")
+    return [im]
+
+total_frames = (len(density_history) - 1) * 10
+ani = FuncAnimation(fig, update, frames=np.linspace(0, len(density_history)-1, total_frames),
+                    interval=80, blit=True)
+
+ani.save("plots/v0.1_density_animation_fade.gif",
+         writer='pillow',
+         fps=15,
+         dpi=100,
+         loop=0)
+plt.close(fig)
+
+print("Saved smooth fade animation: plots/v0.1_density_animation_fade.gif")
+
+print("\n=== v0.1 FINISHED ===")
+print("Check Files → plots folder")
+print("You should see these 10 static files + 1 GIF:")
+print("1. v0.1_initial_density_vs_r.png")
+print("2. v0.1_pinch_radius_vs_time.png")
+print("3. v0.1_mode_amplitudes_m0_m1.png")
+print("4. v0.1_final_density_rz_slice.png")
+print("5. v0.1_energy_conservation.png")
+print("6. v0.1_mass_conservation.png")
+print("7. v0.1_momentum_conservation.png")
+print("8. v0.1_angular_momentum_conservation.png")
+print("9. v0.1_magnetic_energy_conservation.png")
+print("10. v0.1_reconnection_proxy.png")
+print("+ v0.1_density_animation_fade.gif")
+
+print("Reply 'yes v0.1 works' if you see all 10 + GIF, or paste error if not.")
