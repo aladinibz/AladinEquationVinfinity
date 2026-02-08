@@ -1066,8 +1066,6 @@ print("\nAll 6 validation cases completed and saved!")
 # ─── FINAL ZIP FOR ZENODO ───────────────────────────────────────────────────
 print("Zipping all plots for upload...")
 !zip -r zpinch_full_plots_zenodo.zip plots 2>/dev/null
-from google.colab import files
-files.download('zpinch_full_plots_zenodo.zip')
 
 print("Zip downloaded! Unzip → check 'plots' folder → upload to Zenodo.")
 print("You now have 20+ figures as proof of full Z-pinch physics simulation.")
