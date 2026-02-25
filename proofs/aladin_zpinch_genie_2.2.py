@@ -816,12 +816,9 @@ plots_generated.append('plots/42_energy_partition_pie_final.png')
 # Auto-download all 42 plots + final checkpoint
 print(f"Generated {len(plots_generated)} plots. Auto-downloading...")
 
-from google.colab import files
 for p in plots_generated:
-    files.download(p)
 
 np.savez('checkpoints/final_all_plots_checkpoint.npz', t=float(t), genie_amp=history["genie_amp"][-1] if history["genie_amp"] else 0.0)
-files.download('checkpoints/final_all_plots_checkpoint.npz')
 
 print("ALL 42 PLOTS + FINAL CHECKPOINT DOWNLOADED!")
 print("Done – ready for publish.")
