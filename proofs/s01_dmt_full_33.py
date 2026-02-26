@@ -600,9 +600,7 @@ plt.close()
 print("All 33 validations complete!")
 print("All plots saved in /plots/ and auto-downloaded.")
 
-from google.colab import files
 import glob
 for f in glob.glob("plots/*.png"):
-    files.download(f)
 
 print("Done — ready for publish!")
