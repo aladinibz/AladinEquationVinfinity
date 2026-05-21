@@ -3,11 +3,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 import time
 
-print("🌌 Plasma Cosmology v6.2 — 128³ CuPy + Memory Pool Optimized")
+print("🌌 Plasma Cosmology v6.2 — 128³ CuPy GPU OPTIMIZED")
 
-# Enable & configure CuPy memory pool
+# Enable memory pool (safe limit for Colab T4)
 pool = cp.get_default_memory_pool()
-pool.set_limit(size=5 * 1024**3)  # 5 GB limit (safe for Colab T4)
+pool.set_limit(size=5 * 1024**3)   # 5 GB
 print(f"CuPy memory pool limit set to {pool.limit / 1024**3:.1f} GB")
 
 N = 128
@@ -36,12 +36,12 @@ kz = 2*cp.pi*cp.fft.fftfreq(N, d=dx)
 KX, KY, KZ = cp.meshgrid(kx, ky, kz, indexing='ij')
 k2 = KX**2 + KY**2 + KZ**2 + 1e-12
 
-# ====================== NFW ======================
-M_vir = 1.2e12 * 1.989e30
-rs = 22.0 * 3.086e19
 def nfw_mass(r):
     x = r / rs
     return M_vir * (cp.log(1 + x) - x / (1 + x)) / (cp.log(2) - 0.5)
+
+M_vir = 1.2e12 * 1.989e30
+rs = 22.0 * 3.086e19
 
 def run_simulation(use_dm, use_cr=True):
     M_enc_dm = nfw_mass(r_sph) if use_dm else cp.zeros_like(r_sph)
@@ -57,7 +57,6 @@ def run_simulation(use_dm, use_cr=True):
     Bz = cp.zeros((N, N, N+1), dtype=cp.float32)
     psi = cp.zeros_like(rho, dtype=cp.float32)
     
-    # Strong seed B
     for k in range(N+1):
         zf = -L/2 + k*dx
         r2d = cp.sqrt(X[:,:,0]**2 + Y[:,:,0]**2)
@@ -110,12 +109,10 @@ def run_simulation(use_dm, use_cr=True):
         By[:,1:-1] += dt * curlEy
         Bz[:,:,1:-1] += dt * curlEz
         
-        # Fixed cleaning
         Bx[1:-1] -= dt * (psi[1:,:,:] - psi[:-1,:,:]) / dx
         By[:,1:-1] -= dt * (psi[:,1:,:] - psi[:,:-1,:]) / dx
         Bz[:,:,1:-1] -= dt * (psi[:,:,1:] - psi[:,:,:-1]) / dx
         
-        # Self-gravity (every 100 steps)
         if step % 100 == 0:
             rho_k = cp.fft.fftn(rho)
             Phi_k = -4*cp.pi*G*rho_k / k2
@@ -124,7 +121,6 @@ def run_simulation(use_dm, use_cr=True):
         g_y = -cp.gradient(Phi, dx, axis=1)
         g_z = -cp.gradient(Phi, dx, axis=2)
         
-        # Forces + viscosity
         Jx = (cp.gradient(Bz_c, dx, axis=1) - cp.gradient(By_c, dx, axis=2)) / mu0
         Jy = (cp.gradient(Bx_c, dx, axis=2) - cp.gradient(Bz_c, dx, axis=0)) / mu0
         Jz_total = (cp.gradient(By_c, dx, axis=0) - cp.gradient(Bx_c, dx, axis=1)) / mu0
@@ -202,16 +198,13 @@ def run_simulation(use_dm, use_cr=True):
         'Lz': Lz_list
     }
 
-# ====================== SIDE-BY-SIDE RUNS ======================
 print("Running Pure Plasma mode...")
 plasma_data = run_simulation(False, True)
 
 print("\nRunning DM mode...")
 dm_data = run_simulation(True, True)
 
-# ====================== PLOTS ======================
 plt.figure(figsize=(14, 6))
-
 plt.subplot(1, 2, 1)
 r_plot = plasma_data['r']
 plt.plot(r_plot, plasma_data['v_phi'], 'cyan', lw=2.5, label='Pure Plasma')
@@ -237,4 +230,4 @@ plt.grid(True)
 plt.tight_layout()
 plt.show()
 
-print("✅ v6.2 CuPy + Memory Pool complete! Share the final numbers.")
+print("✅ v6.2 CuPy complete! Share the final numbers.")
