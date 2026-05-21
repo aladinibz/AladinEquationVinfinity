@@ -1,9 +1,8 @@
-%matplotlib inline
 import cupy as cp
 import numpy as np
 import matplotlib.pyplot as plt
 
-print("🌌 Plasma Cosmology v8.1 — 128³ A100 GPU + Dynamic Rotation + J×B Profile (Fixed)")
+print("🌌 Plasma Cosmology v8.1 — 128³ A100 GPU + Dynamic Rotation + J×B Profile")
 
 N = 128
 L = 60.0
@@ -46,13 +45,12 @@ def run_simulation(use_dm, use_cr=True):
     Bz = cp.zeros((N, N, N+1), dtype=cp.float32)
     psi = cp.zeros_like(rho, dtype=cp.float32)
     
-    # Toroidal + vertical seed field (fixed)
+    # Toroidal + vertical seed field (fixed slicing)
     for k in range(N+1):
         zf = -L/2 + k*dx
         r2d = cp.sqrt(X[:,:,0]**2 + Y[:,:,0]**2)
         Bz[:,:,k] = 5e-8 * cp.exp(-r2d**2 / 250.0) * cp.exp(-zf**2 / 40.0)
         Bphi = 2e-7 * cp.exp(-r2d / 15.0)
-        # Safe 2D assignment for each layer
         slice_y = Y[:,:,k] / (r_cyl[:,:,k] + 1e-8)
         slice_x = X[:,:,k] / (r_cyl[:,:,k] + 1e-8)
         Bx[:-1,:,k] -= Bphi * slice_y
@@ -278,4 +276,4 @@ plt.tight_layout()
 plt.show()
 plt.savefig('JxB_profile_v8.1.png')
 
-print("✅ v8.1 complete! Share the J×B radial averages and rotation curve summary.")
+print("✅ v8.1 complete! Plot should appear now. Download 'JxB_profile_v8.1.png' if needed.")
