@@ -50,7 +50,7 @@ def run_simulation(use_dm):
         r2d = np.sqrt(X[:,:,0]**2 + Y[:,:,0]**2)
         Bz[:,:,k] = 1.2e-10 * np.exp(-r2d**2 / 280.0) * np.exp(-zf**2 / 45.0)
     
-    # Self-consistent rotating equilibrium (includes approx. pressure support)
+    # Self-consistent rotating equilibrium
     M_bary = 4*np.pi*r_cyl**2*rho*dx
     M_total = M_bary + M_enc_dm
     P_tot_approx = 2e-12 * rho + u_cr / 3.0
@@ -85,7 +85,6 @@ def run_simulation(use_dm):
         Ey[1:,:,1:] = -(vz * Bx_c - vx * Bz_c)
         Ez[1:,1:,:] = -(vx * By_c - vy * Bx_c)
         
-        # Turbulent helicity dynamo
         shear = np.gradient(vy, dx, axis=0) - np.gradient(vx, dx, axis=1)
         helicity_factor = np.abs(shear) * 1e-3
         alpha = alpha0 * helicity_factor
@@ -99,7 +98,7 @@ def run_simulation(use_dm):
         By[:,1:-1] += dt * curlEy
         Bz[:,:,1:-1] += dt * curlEz
         
-        # FIXED Hyperbolic cleaning - proper finite difference (no broadcast error)
+        # FIXED Hyperbolic cleaning - direct finite difference (no gradient slicing error)
         Bx[1:-1] -= dt * (psi[1:,:,:] - psi[:-1,:,:]) / dx
         By[:,1:-1] -= dt * (psi[:,1:,:] - psi[:,:-1,:]) / dx
         Bz[:,:,1:-1] -= dt * (psi[:,:,1:] - psi[:,:,:-1]) / dx
