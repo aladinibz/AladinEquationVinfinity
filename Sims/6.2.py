@@ -3,12 +3,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 import time
 
-print("🌌 Plasma Cosmology v6.2 — 128³ CuPy GPU OPTIMIZED")
+print("🌌 Plasma Cosmology v6.2 — 128³ CuPy CLEAN + Memory Pool")
 
-# Enable memory pool (safe limit for Colab T4)
+# Memory pool setup
 pool = cp.get_default_memory_pool()
-pool.set_limit(size=5 * 1024**3)   # 5 GB
-print(f"CuPy memory pool limit set to {pool.limit / 1024**3:.1f} GB")
+pool.set_limit(size=5 * 1024**3)  # 5 GB safe limit for Colab
+free_mem, total_mem = cp.cuda.Device(0).mem_info
+print(f"CuPy memory pool limit: 5 GB | Free GPU memory: {free_mem / 1024**3:.1f} GB")
 
 N = 128
 L = 60.0
@@ -36,12 +37,11 @@ kz = 2*cp.pi*cp.fft.fftfreq(N, d=dx)
 KX, KY, KZ = cp.meshgrid(kx, ky, kz, indexing='ij')
 k2 = KX**2 + KY**2 + KZ**2 + 1e-12
 
+M_vir = 1.2e12 * 1.989e30
+rs = 22.0 * 3.086e19
 def nfw_mass(r):
     x = r / rs
     return M_vir * (cp.log(1 + x) - x / (1 + x)) / (cp.log(2) - 0.5)
-
-M_vir = 1.2e12 * 1.989e30
-rs = 22.0 * 3.086e19
 
 def run_simulation(use_dm, use_cr=True):
     M_enc_dm = nfw_mass(r_sph) if use_dm else cp.zeros_like(r_sph)
