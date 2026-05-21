@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import time
 
-print("🌌 Plasma Cosmology v5.7 OPTIMIZED — FULL 128³ + Fast & Stable")
+print("🌌 Plasma Cosmology v5.8 — STABILIZED 128³ Full 3D")
 
 # ====================== FIXED GRID ======================
 N = 128
@@ -16,13 +16,13 @@ r_sph = np.sqrt(X**2 + Y**2 + Z**2 + 1e-8)
 mu0 = 4 * np.pi * 1e-7
 gamma = 5.0 / 3.0
 G = 6.6743e-11
-CFL = 0.25
+CFL = 0.20          # lowered for 128³ stability
 ch = 2.0
 kappa = 0.5
 steps = 800
 max_v = 350 * 1000.0
 alpha0 = 0.0012
-nu_visc = 0.008   # artificial viscosity for stability
+nu_visc = 0.025     # stronger artificial viscosity
 
 # ====================== NFW ======================
 M_vir = 1.2e12 * 1.989e30
@@ -45,7 +45,7 @@ def run_simulation(use_dm, use_cr=True):
     Bz = np.zeros((N, N, N+1), dtype=np.float32)
     psi = np.zeros_like(rho, dtype=np.float32)
     
-    # Stronger seed B + turbulence
+    # Stronger seed B
     for k in range(N+1):
         zf = -L/2 + k*dx
         r2d = np.sqrt(X[:,:,0]**2 + Y[:,:,0]**2)
@@ -60,10 +60,10 @@ def run_simulation(use_dm, use_cr=True):
     vy = v_phi_eq * (X / (r_cyl + 1e-8))
     vx = -v_phi_eq * (Y / (r_cyl + 1e-8))
     
-    # Turbulence seed
-    vx += 4e3 * np.random.randn(N, N, N)
-    vy += 4e3 * np.random.randn(N, N, N)
-    vz += 2e3 * np.random.randn(N, N, N)
+    # Small turbulence seed
+    vx += 2.5e3 * np.random.randn(N, N, N)
+    vy += 2.5e3 * np.random.randn(N, N, N)
+    vz += 1e3 * np.random.randn(N, N, N)
     
     p_th = 2e-12 * rho
     E_total = p_th / (gamma - 1) + 0.5*rho*(vx**2 + vy**2 + vz**2) + u_cr
@@ -109,7 +109,7 @@ def run_simulation(use_dm, use_cr=True):
         By[:,1:-1] -= dt * (psi[:,1:,:] - psi[:,:-1,:]) / dx
         Bz[:,:,1:-1] -= dt * (psi[:,:,1:] - psi[:,:,:-1]) / dx
         
-        # Self-gravity (only every 20 steps for speed)
+        # Self-gravity (every 20 steps for speed)
         if step % 20 == 0:
             rho_k = np.fft.fftn(rho)
             kx = 2*np.pi*np.fft.fftfreq(N, d=dx)
@@ -123,7 +123,7 @@ def run_simulation(use_dm, use_cr=True):
         g_y = -np.gradient(Phi, dx, axis=1)
         g_z = -np.gradient(Phi, dx, axis=2)
         
-        # Forces + artificial viscosity
+        # Forces + stronger viscosity
         Jx = (np.gradient(Bz_c, dx, axis=1) - np.gradient(By_c, dx, axis=2)) / mu0
         Jy = (np.gradient(Bx_c, dx, axis=2) - np.gradient(Bz_c, dx, axis=0)) / mu0
         Jz_total = (np.gradient(By_c, dx, axis=0) - np.gradient(Bx_c, dx, axis=1)) / mu0
@@ -140,13 +140,13 @@ def run_simulation(use_dm, use_cr=True):
         
         P_cr = u_cr / 3.0 if use_cr else 0.0
         P_tot = p_th + P_cr + B2 / (2*mu0)
-        P_tot = np.maximum(P_tot, 1e-14)
+        P_tot = np.maximum(P_tot, 1e-13)   # strong pressure floor
         
         Fx -= np.gradient(P_tot, dx, axis=0)
         Fy -= np.gradient(P_tot, dx, axis=1)
         Fz -= np.gradient(P_tot, dx, axis=2)
         
-        # Conservative update
+        # Conservative update + HARD clip
         vx += dt * Fx / (rho + 1e-30)
         vy += dt * Fy / (rho + 1e-30)
         vz += dt * Fz / (rho + 1e-30)
@@ -166,7 +166,7 @@ def run_simulation(use_dm, use_cr=True):
             source = 2.5e-15 * np.exp(-r_cyl / 8.0) * np.exp(-np.abs(Z)/3.0)
             u_cr += dt * (-div_cr + 3e-4 * lap_cr + source)
         
-        # Diagnostics (only every 50 steps)
+        # Diagnostics every 50 steps
         if step % 50 == 0 or step == steps-1:
             e_kin = np.sum(0.5 * rho * v_tot**2) * dx**3
             e_mag = np.sum(B2 / (2*mu0)) * dx**3
@@ -186,7 +186,7 @@ def run_simulation(use_dm, use_cr=True):
             vmax = v_tot.max() / 1000
             print(f"Step {step:4d} | Bmax = {Bmax:.2f} μG | vmax = {vmax:.1f} km/s")
     
-    # Conservation check
+    # Conservation
     total_e_init = e_kin_list[0] + e_mag_list[0] + e_therm_list[0] + e_cr_list[0] + e_grav_list[0]
     total_e_final = e_kin_list[-1] + e_mag_list[-1] + e_therm_list[-1] + e_cr_list[-1] + e_grav_list[-1]
     energy_drift = 100 * (total_e_final - total_e_init) / total_e_init
@@ -239,4 +239,4 @@ plt.grid(True)
 plt.tight_layout()
 plt.show()
 
-print("✅ v5.7 OPTIMIZED complete! Check the plots and conservation numbers.")
+print("✅ v5.8 STABILIZED complete! Check plots and conservation numbers.")
