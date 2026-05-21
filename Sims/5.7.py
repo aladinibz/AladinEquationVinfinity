@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import time
 
-print("🌌 Plasma Cosmology v5.7 — FULL 128³ + Fixed Divergence Cleaning + Scope Fix")
+print("🌌 Plasma Cosmology v5.7 OPTIMIZED — FULL 128³ + Fast & Stable")
 
 # ====================== FIXED GRID ======================
 N = 128
@@ -16,12 +16,13 @@ r_sph = np.sqrt(X**2 + Y**2 + Z**2 + 1e-8)
 mu0 = 4 * np.pi * 1e-7
 gamma = 5.0 / 3.0
 G = 6.6743e-11
-CFL = 0.35
+CFL = 0.25
 ch = 2.0
 kappa = 0.5
 steps = 800
 max_v = 350 * 1000.0
-alpha0 = 0.0008
+alpha0 = 0.0012
+nu_visc = 0.008   # artificial viscosity for stability
 
 # ====================== NFW ======================
 M_vir = 1.2e12 * 1.989e30
@@ -44,11 +45,11 @@ def run_simulation(use_dm, use_cr=True):
     Bz = np.zeros((N, N, N+1), dtype=np.float32)
     psi = np.zeros_like(rho, dtype=np.float32)
     
-    # Weak seed B
+    # Stronger seed B + turbulence
     for k in range(N+1):
         zf = -L/2 + k*dx
         r2d = np.sqrt(X[:,:,0]**2 + Y[:,:,0]**2)
-        Bz[:,:,k] = 1.2e-10 * np.exp(-r2d**2 / 280.0) * np.exp(-zf**2 / 45.0)
+        Bz[:,:,k] = 8e-9 * np.exp(-r2d**2 / 250.0) * np.exp(-zf**2 / 40.0)
     
     # Self-consistent rotating equilibrium
     M_bary = 4*np.pi*r_cyl**2*rho*dx
@@ -58,6 +59,11 @@ def run_simulation(use_dm, use_cr=True):
     v_phi_eq = np.sqrt(np.maximum(G * M_total / (r_cyl + 1e-8) + dp_dr / rho, 0))
     vy = v_phi_eq * (X / (r_cyl + 1e-8))
     vx = -v_phi_eq * (Y / (r_cyl + 1e-8))
+    
+    # Turbulence seed
+    vx += 4e3 * np.random.randn(N, N, N)
+    vy += 4e3 * np.random.randn(N, N, N)
+    vz += 2e3 * np.random.randn(N, N, N)
     
     p_th = 2e-12 * rho
     E_total = p_th / (gamma - 1) + 0.5*rho*(vx**2 + vy**2 + vz**2) + u_cr
@@ -98,32 +104,33 @@ def run_simulation(use_dm, use_cr=True):
         By[:,1:-1] += dt * curlEy
         Bz[:,:,1:-1] += dt * curlEz
         
-        # FIXED Hyperbolic cleaning
+        # Fixed Hyperbolic cleaning
         Bx[1:-1] -= dt * (psi[1:,:,:] - psi[:-1,:,:]) / dx
         By[:,1:-1] -= dt * (psi[:,1:,:] - psi[:,:-1,:]) / dx
         Bz[:,:,1:-1] -= dt * (psi[:,:,1:] - psi[:,:,:-1]) / dx
         
-        # Self-gravity
-        rho_k = np.fft.fftn(rho)
-        kx = 2*np.pi*np.fft.fftfreq(N, d=dx)
-        ky = 2*np.pi*np.fft.fftfreq(N, d=dx)
-        kz = 2*np.pi*np.fft.fftfreq(N, d=dx)
-        KX, KY, KZ = np.meshgrid(kx, ky, kz, indexing='ij')
-        k2 = KX**2 + KY**2 + KZ**2 + 1e-12
-        Phi_k = -4*np.pi*G*rho_k / k2
-        Phi = np.real(np.fft.ifftn(Phi_k))
+        # Self-gravity (only every 20 steps for speed)
+        if step % 20 == 0:
+            rho_k = np.fft.fftn(rho)
+            kx = 2*np.pi*np.fft.fftfreq(N, d=dx)
+            ky = 2*np.pi*np.fft.fftfreq(N, d=dx)
+            kz = 2*np.pi*np.fft.fftfreq(N, d=dx)
+            KX, KY, KZ = np.meshgrid(kx, ky, kz, indexing='ij')
+            k2 = KX**2 + KY**2 + KZ**2 + 1e-12
+            Phi_k = -4*np.pi*G*rho_k / k2
+            Phi = np.real(np.fft.ifftn(Phi_k))
         g_x = -np.gradient(Phi, dx, axis=0)
         g_y = -np.gradient(Phi, dx, axis=1)
         g_z = -np.gradient(Phi, dx, axis=2)
         
-        # Forces
+        # Forces + artificial viscosity
         Jx = (np.gradient(Bz_c, dx, axis=1) - np.gradient(By_c, dx, axis=2)) / mu0
         Jy = (np.gradient(Bx_c, dx, axis=2) - np.gradient(Bz_c, dx, axis=0)) / mu0
         Jz_total = (np.gradient(By_c, dx, axis=0) - np.gradient(Bx_c, dx, axis=1)) / mu0
         
-        Fx = Jy * Bz_c - Jz_total * By_c + g_x
-        Fy = Jz_total * Bx_c - Jx * Bz_c + g_y
-        Fz = Jx * By_c - Jy * Bx_c + g_z
+        Fx = Jy * Bz_c - Jz_total * By_c + g_x - nu_visc * np.gradient(np.gradient(vx, dx, axis=0), dx, axis=0)
+        Fy = Jz_total * Bx_c - Jx * Bz_c + g_y - nu_visc * np.gradient(np.gradient(vy, dx, axis=1), dx, axis=1)
+        Fz = Jx * By_c - Jy * Bx_c + g_z - nu_visc * np.gradient(np.gradient(vz, dx, axis=2), dx, axis=2)
         
         if use_dm:
             grav_dm = -6.6743e-11 * M_enc_dm / (r_sph**2 + 1e-8)
@@ -133,6 +140,7 @@ def run_simulation(use_dm, use_cr=True):
         
         P_cr = u_cr / 3.0 if use_cr else 0.0
         P_tot = p_th + P_cr + B2 / (2*mu0)
+        P_tot = np.maximum(P_tot, 1e-14)
         
         Fx -= np.gradient(P_tot, dx, axis=0)
         Fy -= np.gradient(P_tot, dx, axis=1)
@@ -158,22 +166,22 @@ def run_simulation(use_dm, use_cr=True):
             source = 2.5e-15 * np.exp(-r_cyl / 8.0) * np.exp(-np.abs(Z)/3.0)
             u_cr += dt * (-div_cr + 3e-4 * lap_cr + source)
         
-        # Diagnostics
-        e_kin = np.sum(0.5 * rho * v_tot**2) * dx**3
-        e_mag = np.sum(B2 / (2*mu0)) * dx**3
-        e_therm = np.sum(p_thermal / (gamma-1)) * dx**3
-        e_cr_val = np.sum(u_cr) * dx**3 if use_cr else 0
-        e_grav = -0.5 * np.sum(rho * Phi) * dx**3
-        Lz = np.sum(rho * (X * vy - Y * vx)) * dx**3
-        
-        e_kin_list.append(e_kin)
-        e_mag_list.append(e_mag)
-        e_therm_list.append(e_therm)
-        e_cr_list.append(e_cr_val)
-        e_grav_list.append(e_grav)
-        Lz_list.append(Lz)
-        
-        if step % 100 == 0 or step == steps-1:
+        # Diagnostics (only every 50 steps)
+        if step % 50 == 0 or step == steps-1:
+            e_kin = np.sum(0.5 * rho * v_tot**2) * dx**3
+            e_mag = np.sum(B2 / (2*mu0)) * dx**3
+            e_therm = np.sum(p_thermal / (gamma-1)) * dx**3
+            e_cr_val = np.sum(u_cr) * dx**3 if use_cr else 0
+            e_grav = -0.5 * np.sum(rho * Phi) * dx**3
+            Lz = np.sum(rho * (X * vy - Y * vx)) * dx**3
+            
+            e_kin_list.append(e_kin)
+            e_mag_list.append(e_mag)
+            e_therm_list.append(e_therm)
+            e_cr_list.append(e_cr_val)
+            e_grav_list.append(e_grav)
+            Lz_list.append(Lz)
+            
             Bmax = np.sqrt(B2).max() * 1e6
             vmax = v_tot.max() / 1000
             print(f"Step {step:4d} | Bmax = {Bmax:.2f} μG | vmax = {vmax:.1f} km/s")
@@ -231,4 +239,4 @@ plt.grid(True)
 plt.tight_layout()
 plt.show()
 
-print("✅ v5.7 complete! Check the two plots and the printed conservation numbers.")
+print("✅ v5.7 OPTIMIZED complete! Check the plots and conservation numbers.")
