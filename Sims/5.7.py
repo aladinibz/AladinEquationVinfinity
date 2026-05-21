@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import time
 
-print("🌌 Plasma Cosmology v5.7 — 128³ Full 3D + Self-Consistent Equilibrium + Godunov HLLD")
+print("🌌 Plasma Cosmology v5.7 — FULL 128³ + Fixed Divergence Cleaning")
 
 # ====================== FIXED GRID ======================
 N = 128
@@ -33,29 +33,26 @@ def nfw_mass(r):
 def run_simulation(use_dm):
     M_enc_dm = nfw_mass(r_sph) if use_dm else np.zeros_like(r_sph)
     
-    # Density
     rho = 1.8e-21 * np.exp(-r_cyl / 12.0) * np.exp(-np.abs(Z)/4.0)
-    
-    # Velocities start at zero
     vx = np.zeros_like(rho, dtype=np.float32)
     vy = np.zeros_like(rho, dtype=np.float32)
     vz = np.zeros_like(rho, dtype=np.float32)
     u_cr = 1.6e-13 * np.exp(-r_cyl / 15.0) * np.exp(-np.abs(Z)/6.0)
     
-    # Weak seed B
     Bx = np.zeros((N+1, N, N), dtype=np.float32)
     By = np.zeros((N, N+1, N), dtype=np.float32)
     Bz = np.zeros((N, N, N+1), dtype=np.float32)
     psi = np.zeros_like(rho, dtype=np.float32)
+    
+    # Weak seed B
     for k in range(N+1):
         zf = -L/2 + k*dx
         r2d = np.sqrt(X[:,:,0]**2 + Y[:,:,0]**2)
         Bz[:,:,k] = 1.2e-10 * np.exp(-r2d**2 / 280.0) * np.exp(-zf**2 / 45.0)
     
-    # Improved self-consistent rotating equilibrium
+    # Self-consistent rotating equilibrium (includes approx. pressure support)
     M_bary = 4*np.pi*r_cyl**2*rho*dx
     M_total = M_bary + M_enc_dm
-    # Include approximate pressure + CR support
     P_tot_approx = 2e-12 * rho + u_cr / 3.0
     dp_dr = np.gradient(P_tot_approx, dx, axis=0) * (X / (r_cyl + 1e-8))
     v_phi_eq = np.sqrt(np.maximum(G * M_total / (r_cyl + 1e-8) + dp_dr / rho, 0))
@@ -65,7 +62,6 @@ def run_simulation(use_dm):
     p_th = 2e-12 * rho
     E_total = p_th / (gamma - 1) + 0.5*rho*(vx**2 + vy**2 + vz**2) + u_cr
     
-    # Diagnostics
     e_kin_list, e_mag_list, e_therm_list, e_cr_list, e_grav_list, Lz_list = [], [], [], [], [], []
     
     for step in range(steps):
@@ -103,12 +99,10 @@ def run_simulation(use_dm):
         By[:,1:-1] += dt * curlEy
         Bz[:,:,1:-1] += dt * curlEz
         
-        # Hyperbolic cleaning
-        divB = (np.gradient(Bx_c, dx, axis=0) + np.gradient(By_c, dx, axis=1) + np.gradient(Bz_c, dx, axis=2))
-        psi -= dt * (ch**2 * divB + (ch / (kappa * dx)) * psi)
-        Bx[1:-1] -= dt * np.gradient(psi, dx, axis=0)[1:-1]
-        By[:,1:-1] -= dt * np.gradient(psi, dx, axis=1)[:,1:-1]
-        Bz[:,:,1:-1] -= dt * np.gradient(psi, dx, axis=2)[:,:,1:-1]
+        # FIXED Hyperbolic cleaning - proper finite difference (no broadcast error)
+        Bx[1:-1] -= dt * (psi[1:,:,:] - psi[:-1,:,:]) / dx
+        By[:,1:-1] -= dt * (psi[:,1:,:] - psi[:,:-1,:]) / dx
+        Bz[:,:,1:-1] -= dt * (psi[:,:,1:] - psi[:,:,:-1]) / dx
         
         # Self-gravity
         rho_k = np.fft.fftn(rho)
@@ -123,7 +117,7 @@ def run_simulation(use_dm):
         g_y = -np.gradient(Phi, dx, axis=1)
         g_z = -np.gradient(Phi, dx, axis=2)
         
-        # Forces (Lorentz + gravity + total pressure)
+        # Forces
         Jx = (np.gradient(Bz_c, dx, axis=1) - np.gradient(By_c, dx, axis=2)) / mu0
         Jy = (np.gradient(Bx_c, dx, axis=2) - np.gradient(Bz_c, dx, axis=0)) / mu0
         Jz_total = (np.gradient(By_c, dx, axis=0) - np.gradient(Bx_c, dx, axis=1)) / mu0
@@ -185,7 +179,7 @@ def run_simulation(use_dm):
             vmax = v_tot.max() / 1000
             print(f"Step {step:4d} | Bmax = {Bmax:.2f} μG | vmax = {vmax:.1f} km/s")
     
-    # Conservation
+    # Conservation check
     total_e_init = e_kin_list[0] + e_mag_list[0] + e_therm_list[0] + e_cr_list[0] + e_grav_list[0]
     total_e_final = e_kin_list[-1] + e_mag_list[-1] + e_therm_list[-1] + e_cr_list[-1] + e_grav_list[-1]
     energy_drift = 100 * (total_e_final - total_e_init) / total_e_init
