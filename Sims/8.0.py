@@ -2,7 +2,7 @@ import cupy as cp
 import numpy as np
 import matplotlib.pyplot as plt
 
-print("🌌 Plasma Cosmology v8.0 — 128³ A100 GPU + Dynamic Rotation + J×B/Tension Profiles")
+print("🌌 Plasma Cosmology v8.0 — 128³ A100 GPU + Dynamic Rotation + J×B Profile")
 
 N = 128
 L = 60.0
@@ -21,7 +21,7 @@ CFL = 0.12
 steps = 800
 max_v = 300000.0
 alpha0 = 0.0010
-nu_visc = 0.05          # reduced for better dynamics
+nu_visc = 0.08
 kappa_cr = cp.float32(1.0e-3)
 
 M_vir = cp.float64(1.2e12 * 1.989e30)
@@ -45,7 +45,7 @@ def run_simulation(use_dm, use_cr=True):
     Bz = cp.zeros((N, N, N+1), dtype=cp.float32)
     psi = cp.zeros_like(rho, dtype=cp.float32)
     
-    # Toroidal seed field (realistic for galaxies)
+    # Toroidal seed field
     for k in range(N+1):
         zf = -L/2 + k*dx
         r2d = cp.sqrt(X[:,:,0]**2 + Y[:,:,0]**2)
@@ -54,12 +54,12 @@ def run_simulation(use_dm, use_cr=True):
         Bx[:-1,:,k] -= Bphi * (Y / (r_cyl + 1e-8))
         By[:,:-1,k] += Bphi * (X / (r_cyl + 1e-8))
     
-    # Small non-axisymmetric perturbation
-    perturbation = 0.02 * cp.random.normal(0, 1, rho.shape, dtype=cp.float32)
-    rho *= (1 + perturbation)
-    vy *= (1 + 0.015 * perturbation)
+    # Small perturbation
+    pert = 0.02 * cp.random.normal(0, 1, rho.shape, dtype=cp.float32)
+    rho *= (1 + pert)
+    vy *= (1 + 0.015 * pert)
     
-    # Realistic initial equilibrium
+    # Initial equilibrium
     M_bary = 4*cp.pi*r_cyl**2*rho*dx
     M_total = M_bary.astype(cp.float64) + M_enc_dm
     P_tot_approx = 2e-12 * rho + (u_cr / 3.0 if use_cr else 0.0)
@@ -87,7 +87,7 @@ def run_simulation(use_dm, use_cr=True):
         cmax = vtot.max() + cs.max() + ca.max() + 2.0
         dt = CFL * dx / cmax
         
-        # CT + dynamo (kept)
+        # CT + dynamo
         Ex = cp.zeros((N, N+1, N+1), dtype=cp.float32)
         Ey = cp.zeros((N+1, N, N+1), dtype=cp.float32)
         Ez = cp.zeros((N+1, N+1, N), dtype=cp.float32)
@@ -107,6 +107,7 @@ def run_simulation(use_dm, use_cr=True):
         By[:,1:-1] += dt * curlEy
         Bz[:,:,1:-1] += dt * curlEz
         
+        # Safe hyperbolic cleaning (fixed slicing)
         Bx[1:-1] -= dt * (psi[1:,:,:] - psi[:-1,:,:]) / dx
         By[:,1:-1] -= dt * (psi[:,1:,:] - psi[:,:-1,:]) / dx
         Bz[:,:,1:-1] -= dt * (psi[:,:,1:] - psi[:,:,:-1]) / dx
@@ -136,10 +137,11 @@ def run_simulation(use_dm, use_cr=True):
         JxB_y = Jz_total * Bx_c - Jx * Bz_c
         JxB_z = Jx * By_c - Jy * Bx_c
         
-        # Magnetic tension
-        tension_r = (Bx_c * cp.gradient(Bx_c, dx, axis=0) + By_c * cp.gradient(Bx_c, dx, axis=1) + Bz_c * cp.gradient(Bx_c, dx, axis=2)) / (mu0 * (rho + 1e-30))
+        # J × B radial acceleration
+        a_JxB_r = (JxB_x * (X / r_cyl) + JxB_y * (Y / r_cyl)) / (rho + 1e-30)
         
-        # Centrifugal (emergent from velocity)
+        # Tension + centrifugal
+        tension_r = (Bx_c * cp.gradient(Bx_c, dx, axis=0) + By_c * cp.gradient(Bx_c, dx, axis=1) + Bz_c * cp.gradient(Bx_c, dx, axis=2)) / (mu0 * (rho + 1e-30))
         centrifugal = (vx**2 + vy**2) / (r_cyl + 1e-8)
         cent_x = -rho * (X / r_cyl) * centrifugal
         cent_y = -rho * (Y / r_cyl) * centrifugal
@@ -223,7 +225,6 @@ def run_simulation(use_dm, use_cr=True):
     Lz_drift = 100 * (Lz_list[-1] - Lz_list[0]) / (abs(Lz_list[0]) + 1e-30)
     print(f"Energy drift: {energy_drift:.4f}%   |   Lz drift: {Lz_drift:.4f}%")
     
-    # Rotation curve
     mid = N//2
     r_mid = r_cyl[:,:,mid].flatten()
     v_phi_mid = ((X[:,:,mid]*vy[:,:,mid] - Y[:,:,mid]*vx[:,:,mid]) / (r_cyl[:,:,mid] + 1e-8)).flatten() / 1000
@@ -233,7 +234,7 @@ def run_simulation(use_dm, use_cr=True):
     v_rot = v_rot / (counts + 1e-8)
     r_centers = (edges[:-1] + edges[1:]) / 2
     
-    # J×B radial acceleration
+    # J × B radial acceleration
     a_JxB_r = (JxB_x * (X / r_cyl) + JxB_y * (Y / r_cyl)) / (rho + 1e-30)
     a_JxB_r_mid = a_JxB_r[:,:,mid].flatten()
     a_JxB_avg, _ = np.histogram(r_mid.get(), bins=bins, weights=a_JxB_r_mid.get())
@@ -276,4 +277,4 @@ plt.tight_layout()
 plt.show()
 plt.savefig('JxB_profile_v8.0.png')
 
-print("✅ v8.0 complete! Share the new J×B radial averages and rotation curve summary.")
+print("✅ v8.0 complete! Share the J×B radial averages and rotation curve summary.")
