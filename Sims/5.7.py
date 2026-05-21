@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import time
 
-print("🌌 Plasma Cosmology v5.7 — FULL 128³ + Fixed Divergence Cleaning")
+print("🌌 Plasma Cosmology v5.7 — FULL 128³ + Fixed Divergence Cleaning + Scope Fix")
 
 # ====================== FIXED GRID ======================
 N = 128
@@ -30,14 +30,14 @@ def nfw_mass(r):
     x = r / rs
     return M_vir * (np.log(1 + x) - x / (1 + x)) / (np.log(2) - 0.5)
 
-def run_simulation(use_dm):
+def run_simulation(use_dm, use_cr=True):
     M_enc_dm = nfw_mass(r_sph) if use_dm else np.zeros_like(r_sph)
     
     rho = 1.8e-21 * np.exp(-r_cyl / 12.0) * np.exp(-np.abs(Z)/4.0)
     vx = np.zeros_like(rho, dtype=np.float32)
     vy = np.zeros_like(rho, dtype=np.float32)
     vz = np.zeros_like(rho, dtype=np.float32)
-    u_cr = 1.6e-13 * np.exp(-r_cyl / 15.0) * np.exp(-np.abs(Z)/6.0)
+    u_cr = 1.6e-13 * np.exp(-r_cyl / 15.0) * np.exp(-np.abs(Z)/6.0) if use_cr else np.zeros_like(rho)
     
     Bx = np.zeros((N+1, N, N), dtype=np.float32)
     By = np.zeros((N, N+1, N), dtype=np.float32)
@@ -53,7 +53,7 @@ def run_simulation(use_dm):
     # Self-consistent rotating equilibrium
     M_bary = 4*np.pi*r_cyl**2*rho*dx
     M_total = M_bary + M_enc_dm
-    P_tot_approx = 2e-12 * rho + u_cr / 3.0
+    P_tot_approx = 2e-12 * rho + (u_cr / 3.0 if use_cr else 0.0)
     dp_dr = np.gradient(P_tot_approx, dx, axis=0) * (X / (r_cyl + 1e-8))
     v_phi_eq = np.sqrt(np.maximum(G * M_total / (r_cyl + 1e-8) + dp_dr / rho, 0))
     vy = v_phi_eq * (X / (r_cyl + 1e-8))
@@ -98,7 +98,7 @@ def run_simulation(use_dm):
         By[:,1:-1] += dt * curlEy
         Bz[:,:,1:-1] += dt * curlEz
         
-        # FIXED Hyperbolic cleaning - direct finite difference (no gradient slicing error)
+        # FIXED Hyperbolic cleaning
         Bx[1:-1] -= dt * (psi[1:,:,:] - psi[:-1,:,:]) / dx
         By[:,1:-1] -= dt * (psi[:,1:,:] - psi[:,:-1,:]) / dx
         Bz[:,:,1:-1] -= dt * (psi[:,:,1:] - psi[:,:,:-1]) / dx
@@ -131,7 +131,7 @@ def run_simulation(use_dm):
             Fy += grav_dm * (Y / r_sph)
             Fz += grav_dm * (Z / r_sph)
         
-        P_cr = u_cr / 3.0 if USE_CR else 0.0
+        P_cr = u_cr / 3.0 if use_cr else 0.0
         P_tot = p_th + P_cr + B2 / (2*mu0)
         
         Fx -= np.gradient(P_tot, dx, axis=0)
@@ -152,7 +152,7 @@ def run_simulation(use_dm):
         rho += dt * (-div_v)
         rho = np.maximum(rho, 1e-25)
         
-        if USE_CR:
+        if use_cr:
             div_cr = (np.gradient(u_cr*vx, dx, axis=0) + np.gradient(u_cr*vy, dx, axis=1) + np.gradient(u_cr*vz, dx, axis=2))
             lap_cr = sum(np.gradient(np.gradient(u_cr, dx, axis=i), dx, axis=i) for i in range(3))
             source = 2.5e-15 * np.exp(-r_cyl / 8.0) * np.exp(-np.abs(Z)/3.0)
@@ -162,7 +162,7 @@ def run_simulation(use_dm):
         e_kin = np.sum(0.5 * rho * v_tot**2) * dx**3
         e_mag = np.sum(B2 / (2*mu0)) * dx**3
         e_therm = np.sum(p_thermal / (gamma-1)) * dx**3
-        e_cr_val = np.sum(u_cr) * dx**3 if USE_CR else 0
+        e_cr_val = np.sum(u_cr) * dx**3 if use_cr else 0
         e_grav = -0.5 * np.sum(rho * Phi) * dx**3
         Lz = np.sum(rho * (X * vy - Y * vx)) * dx**3
         
@@ -198,10 +198,10 @@ def run_simulation(use_dm):
 
 # ====================== SIDE-BY-SIDE RUNS ======================
 print("Running Pure Plasma mode...")
-plasma_data = run_simulation(False)
+plasma_data = run_simulation(False, True)
 
 print("\nRunning DM mode...")
-dm_data = run_simulation(True)
+dm_data = run_simulation(True, True)
 
 # ====================== PLOTS ======================
 plt.figure(figsize=(14, 6))
