@@ -2,7 +2,7 @@ import cupy as cp
 import numpy as np
 import matplotlib.pyplot as plt
 
-print("🌌 Plasma Cosmology v10.4 — FULL COMPLETE CODE (no missing blocks)")
+print("🌌 Plasma Cosmology v10.5 — FULL COMPLETE CODE (no missing blocks)")
 
 N = 128
 L = 60.0
@@ -15,9 +15,8 @@ r_sph = cp.sqrt(X**2 + Y**2 + Z**2 + 1e-8)
 mu0 = 4 * cp.pi * 1e-7
 gamma = 5.0/3.0
 G = 6.6743e-11
-CFL = 0.04
-eta = 5e-4
-visc = 1e-3
+CFL = 0.025
+visc = 2e-3
 steps = 800
 max_v_code = 3.0
 alpha0 = 0.0015
@@ -44,7 +43,19 @@ def run_simulation(use_dm, use_cr=True):
     Bz = cp.zeros((N, N, N+1), dtype=cp.float32)
     psi = cp.zeros_like(rho, dtype=cp.float32)
     
-    # Initial rotation + seeds
+    # ====================== PROPER MAGNETIC SEED ======================
+    for k in range(N+1):
+        zf = -L/2 + k*dx
+        r2d = cp.sqrt(X[:,:,0]**2 + Y[:,:,0]**2)
+        Bz[:,:,k] = 0.05 * cp.exp(-r2d**2 / 250.0) * cp.exp(-zf**2 / 40.0)
+    r2d = cp.sqrt(X[:,:,0]**2 + Y[:,:,0]**2)
+    Bphi = 0.15 * cp.exp(-r2d / 15.0)
+    for k in range(N):
+        rk = r_cyl[:,:,k]
+        Bx[:-1,:,k] -= Bphi * (Y[:,:,k] / (rk + 1e-6))
+        By[:,:-1,k] += Bphi * (X[:,:,k] / (rk + 1e-6))
+    
+    # Initial rotation
     v_phi_eq = 2.3 * (1 - cp.exp(-r_cyl / 8.0))
     vy = v_phi_eq * (X / r_cyl)
     vx = -v_phi_eq * (Y / r_cyl)
@@ -120,11 +131,11 @@ def run_simulation(use_dm, use_cr=True):
         f_my = (sr*(my_L*vx_L) - sl*(my_R*vx_R) + sl*sr*(my_R-my_L)) / (sr-sl+1e-12)
         f_mz = (sr*(mz_L*vx_L) - sl*(mz_R*vx_R) + sl*sr*(mz_R-mz_L)) / (sr-sl+1e-12)
         f_E = (sr*((E_L+p_L)*vx_L) - sl*((E_R+p_R)*vx_R) + sl*sr*(E_R-E_L)) / (sr-sl+1e-12)
-        rho[:-1,:,:] += dt * f_rho / dx
-        mx[:-1,:,:] += dt * f_mx / dx
-        my[:-1,:,:] += dt * f_my / dx
-        mz[:-1,:,:] += dt * f_mz / dx
-        E_total[:-1,:,:] += dt * f_E / dx
+        rho[:-1,:,:] -= dt/dx * (f_rho[1:,:,:] - f_rho[:-1,:,:])
+        mx[:-1,:,:] -= dt/dx * (f_mx[1:,:,:] - f_mx[:-1,:,:])
+        my[:-1,:,:] -= dt/dx * (f_my[1:,:,:] - f_my[:-1,:,:])
+        mz[:-1,:,:] -= dt/dx * (f_mz[1:,:,:] - f_mz[:-1,:,:])
+        E_total[:-1,:,:] -= dt/dx * (f_E[1:,:,:] - f_E[:-1,:,:])
         
         # y-sweep
         rho_L = rho[:,:-1,:]; rho_R = rho[:,1:,:]
@@ -144,11 +155,11 @@ def run_simulation(use_dm, use_cr=True):
         f_my = (sr*(my_L*vy_L + p_L) - sl*(my_R*vy_R + p_R) + sl*sr*(my_R-my_L)) / (sr-sl+1e-12)
         f_mz = (sr*(mz_L*vy_L) - sl*(mz_R*vy_R) + sl*sr*(mz_R-mz_L)) / (sr-sl+1e-12)
         f_E = (sr*((E_L+p_L)*vy_L) - sl*((E_R+p_R)*vy_R) + sl*sr*(E_R-E_L)) / (sr-sl+1e-12)
-        rho[:,:-1,:] += dt * f_rho / dx
-        mx[:,:-1,:] += dt * f_mx / dx
-        my[:,:-1,:] += dt * f_my / dx
-        mz[:,:-1,:] += dt * f_mz / dx
-        E_total[:,:-1,:] += dt * f_E / dx
+        rho[:,:-1,:] -= dt/dx * (f_rho[1:,:,:] - f_rho[:-1,:,:])
+        mx[:,:-1,:] -= dt/dx * (f_mx[1:,:,:] - f_mx[:-1,:,:])
+        my[:,:-1,:] -= dt/dx * (f_my[1:,:,:] - f_my[:-1,:,:])
+        mz[:,:-1,:] -= dt/dx * (f_mz[1:,:,:] - f_mz[:-1,:,:])
+        E_total[:,:-1,:] -= dt/dx * (f_E[1:,:,:] - f_E[:-1,:,:])
         
         # z-sweep
         rho_L = rho[:,:,:-1]; rho_R = rho[:,:,1:]
@@ -168,21 +179,24 @@ def run_simulation(use_dm, use_cr=True):
         f_my = (sr*(my_L*vz_L) - sl*(my_R*vz_R) + sl*sr*(my_R-my_L)) / (sr-sl+1e-12)
         f_mz = (sr*(mz_L*vz_L + p_L) - sl*(mz_R*vz_R + p_R) + sl*sr*(mz_R-mz_L)) / (sr-sl+1e-12)
         f_E = (sr*((E_L+p_L)*vz_L) - sl*((E_R+p_R)*vz_R) + sl*sr*(E_R-E_L)) / (sr-sl+1e-12)
-        rho[:,:,:-1] += dt * f_rho / dx
-        mx[:,:,:-1] += dt * f_mx / dx
-        my[:,:,:-1] += dt * f_my / dx
-        mz[:,:,:-1] += dt * f_mz / dx
-        E_total[:,:,:-1] += dt * f_E / dx
+        rho[:,:,:-1] -= dt/dx * (f_rho[1:,:,:] - f_rho[:-1,:,:])
+        mx[:,:,:-1] -= dt/dx * (f_mx[1:,:,:] - f_mx[:-1,:,:])
+        my[:,:,:-1] -= dt/dx * (f_my[1:,:,:] - f_my[:-1,:,:])
+        mz[:,:,:-1] -= dt/dx * (f_mz[1:,:,:] - f_mz[:-1,:,:])
+        E_total[:,:,:-1] -= dt/dx * (f_E[1:,:,:] - f_E[:-1,:,:])
         
         # Recompute primitives
         vx = mx / rho
         vy = my / rho
         vz = mz / rho
         
-        # Artificial viscosity
+        # Artificial viscosity on all components
         lap_vx = cp.gradient(cp.gradient(vx, dx, axis=0), dx, axis=0) + cp.gradient(cp.gradient(vx, dx, axis=1), dx, axis=1) + cp.gradient(cp.gradient(vx, dx, axis=2), dx, axis=2)
+        lap_vy = cp.gradient(cp.gradient(vy, dx, axis=0), dx, axis=0) + cp.gradient(cp.gradient(vy, dx, axis=1), dx, axis=1) + cp.gradient(cp.gradient(vy, dx, axis=2), dx, axis=2)
+        lap_vz = cp.gradient(cp.gradient(vz, dx, axis=0), dx, axis=0) + cp.gradient(cp.gradient(vz, dx, axis=1), dx, axis=1) + cp.gradient(cp.gradient(vz, dx, axis=2), dx, axis=2)
         mx += dt * visc * lap_vx
-        # (same for my, mz omitted for brevity but identical)
+        my += dt * visc * lap_vy
+        mz += dt * visc * lap_vz
         
         # CT magnetic field update
         Ex = cp.zeros((N, N+1, N+1), dtype=cp.float32)
@@ -324,7 +338,7 @@ def run_simulation(use_dm, use_cr=True):
     plt.legend()
     plt.grid(True)
     plt.show()
-    plt.savefig('tully_fisher_v10.4.png')
+    plt.savefig('tully_fisher_v10.5.png')
     
     return
 
@@ -333,4 +347,4 @@ run_simulation(False, True)
 print("\nRunning DM mode...")
 run_simulation(True, True)
 
-print("✅ v10.4 complete! Full code with detailed conservation analysis.")
+print("✅ v10.5 complete! Full code with detailed conservation analysis.")
