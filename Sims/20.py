@@ -33,7 +33,6 @@ def flat_mid(field3d):
 # ====================== TRUE HLLD RIEMANN SOLVER with star regions ======================
 def hlld_flux(rho_L, rho_R, mx_L, mx_R, my_L, my_R, mz_L, mz_R, E_L, E_R,
               Bx_L, Bx_R, By_L, By_R, Bz_L, Bz_R, p_L, p_R):
-    # Roe averages
     sqrL = cp.sqrt(rho_L)
     sqrR = cp.sqrt(rho_R)
     inv = 1.0 / (sqrL + sqrR)
@@ -58,12 +57,10 @@ def hlld_flux(rho_L, rho_R, mx_L, mx_R, my_L, my_R, mz_L, mz_R, E_L, E_R,
     S_AR = vx + ca
     S_star = (S_L * rho_R * (vx - S_R) - S_R * rho_L * (vx - S_L) + p_L - p_R) / (rho_R * (vx - S_R) - rho_L * (vx - S_L) + 1e-12)
 
-    # Star states
     rho_star_L = rho_L * (S_L - vx) / (S_L - S_star)
     rho_star_R = rho_R * (S_R - vx) / (S_R - S_star)
     p_star = p_L + rho_L * (vx - S_L) * (S_star - vx) + (B2 / (2 * mu0))
 
-    # Flux selection using star region
     flux = cp.where(S_L >= 0,
                     cp.stack([mx_L, mx_L*vx + p_L + B2/2 - Bx_L**2, mx_L*vy - Bx_L*By_L, mx_L*vz - Bx_L*Bz_L, (E_L + p_L)*vx - Bx_L*(Bx_L*vx + By_L*vy + Bz_L*vz)/mu0]),
                     cp.where(S_R <= 0,
