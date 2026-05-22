@@ -2,7 +2,7 @@ import cupy as cp
 import numpy as np
 import matplotlib.pyplot as plt
 
-print("🌌 Plasma Cosmology v10.2 — FULL MUSCL + HLL Conservative MHD + Diagnostics (p_thermal order fixed)")
+print("🌌 Plasma Cosmology v10.2 — FULL MUSCL + HLL + Entropy Fixing + Detailed Conservation Analysis")
 
 N = 128
 L = 60.0
@@ -80,6 +80,9 @@ def run_simulation(use_dm, use_cr=True):
     E0 = float(cp.sum(E_total))
     Lz0 = float(cp.sum(rho * (X*vy - Y*vx)))
     mass0 = float(cp.sum(rho))
+    px0 = float(cp.sum(mx))
+    py0 = float(cp.sum(my))
+    pz0 = float(cp.sum(mz))
     
     for step in range(steps):
         Bx_c = (Bx[:-1] + Bx[1:])/2
@@ -88,14 +91,8 @@ def run_simulation(use_dm, use_cr=True):
         B2 = Bx_c**2 + By_c**2 + Bz_c**2
         
         vtot = cp.sqrt(vx**2 + vy**2 + vz**2)
-        
-        # p_thermal is calculated FIRST, before any debug or gradient
         p_thermal = (gamma-1)*(E_total - 0.5*rho*vtot**2 - B2/2 - u_cr)
         p_thermal = cp.maximum(p_thermal, 1e-4)
-        
-        # Debug print after p_thermal is ready
-        if step % 50 == 0:
-            print(f"Debug step {step}: rho min/max = {rho.min().get():.2e}/{rho.max().get():.2e} | p_thermal min/max = {p_thermal.min().get():.2e}/{p_thermal.max().get():.2e} | B2 max = {B2.max().get():.2e} | vtot max = {vtot.max().get():.2e}")
         
         P_turb = rho * (0.3 * cp.ones_like(rho))**2
         P_total = p_thermal + P_turb
@@ -103,7 +100,6 @@ def run_simulation(use_dm, use_cr=True):
         alpha_M = 0.2 / (1 + beta**(-0.5))
         P_turb = P_turb * alpha_M
         
-        # Plasma stress-energy gravity
         T00_kin = 0.5*rho*vtot**2
         T00_mag = B2/2
         T00_therm = p_thermal/(gamma-1)
@@ -165,7 +161,7 @@ def run_simulation(use_dm, use_cr=True):
         mz[:-1,:,:] += dt * f_mz / dx
         E_total[:-1,:,:] += dt * f_E / dx
         
-        # y-sweep
+        # y-sweep (identical pattern)
         rho_L = rho[:,:-1,:]
         rho_R = rho[:,1:,:]
         mx_L = mx[:,:-1,:]
@@ -263,6 +259,30 @@ def run_simulation(use_dm, use_cr=True):
         mz[:,:,:-1] += dt * f_mz / dx
         E_total[:,:,:-1] += dt * f_E / dx
         
+        # Recompute velocities from conserved variables
+        vx = mx / rho
+        vy = my / rho
+        vz = mz / rho
+        
+        # Entropy fixing for negative pressure
+        p_thermal = (gamma-1)*(E_total - 0.5*rho*(vx**2 + vy**2 + vz**2) - B2/2 - u_cr)
+        p_floor = 1e-6
+        mask = p_thermal < p_floor
+        if cp.any(mask):
+            E_total = cp.where(mask, E_total + (p_floor - p_thermal) / (gamma - 1), E_total)
+            p_thermal = cp.maximum(p_thermal, p_floor)
+        
+        # Strong floors + NaN handling
+        rho = cp.maximum(cp.nan_to_num(rho, nan=1e-6, posinf=1e-4, neginf=1e-6), 1e-6)
+        mx = cp.nan_to_num(mx, nan=0.0, posinf=max_v_code, neginf=-max_v_code)
+        my = cp.nan_to_num(my, nan=0.0, posinf=max_v_code, neginf=-max_v_code)
+        mz = cp.nan_to_num(mz, nan=0.0, posinf=max_v_code, neginf=-max_v_code)
+        E_total = cp.nan_to_num(E_total, nan=1e-5, posinf=1e-4, neginf=1e-5)
+        u_cr = cp.nan_to_num(u_cr, nan=1e-6, posinf=1e-4, neginf=1e-6)
+        Bx = cp.nan_to_num(Bx, nan=0.0, posinf=1.0, neginf=-1.0)
+        By = cp.nan_to_num(By, nan=0.0, posinf=1.0, neginf=-1.0)
+        Bz = cp.nan_to_num(Bz, nan=0.0, posinf=1.0, neginf=-1.0)
+        
         # CT magnetic field update
         Ex = cp.zeros((N, N+1, N+1), dtype=cp.float32)
         Ey = cp.zeros((N+1, N, N+1), dtype=cp.float32)
@@ -286,17 +306,6 @@ def run_simulation(use_dm, use_cr=True):
         By[:,1:-1] -= dt * (psi[:,1:,:] - psi[:,:-1,:]) / dx
         Bz[:,:,1:-1] -= dt * (psi[:,:,1:] - psi[:,:,:-1]) / dx
         
-        # NaN handling after every major update
-        rho = cp.nan_to_num(rho, nan=1e-6, posinf=1e-4, neginf=1e-6)
-        mx = cp.nan_to_num(mx, nan=0.0, posinf=max_v_code, neginf=-max_v_code)
-        my = cp.nan_to_num(my, nan=0.0, posinf=max_v_code, neginf=-max_v_code)
-        mz = cp.nan_to_num(mz, nan=0.0, posinf=max_v_code, neginf=-max_v_code)
-        E_total = cp.nan_to_num(E_total, nan=1e-5, posinf=1e-4, neginf=1e-5)
-        u_cr = cp.nan_to_num(u_cr, nan=1e-6, posinf=1e-4, neginf=1e-6)
-        Bx = cp.nan_to_num(Bx, nan=0.0, posinf=1.0, neginf=-1.0)
-        By = cp.nan_to_num(By, nan=0.0, posinf=1.0, neginf=-1.0)
-        Bz = cp.nan_to_num(Bz, nan=0.0, posinf=1.0, neginf=-1.0)
-        
         if step % 50 == 0 or step == steps-1:
             Bmax = cp.sqrt(B2).max()
             vmax = cp.sqrt(vx**2 + vy**2 + vz**2).max()
@@ -310,7 +319,43 @@ def run_simulation(use_dm, use_cr=True):
             mass_drift = 100 * (mass_now - mass0) / (mass0 + 1e-12)
             print(f"   Energy drift = {E_drift:.4f}% | Lz drift = {Lz_drift:.4f}% | Mass drift = {mass_drift:.4f}%")
     
-    # GS95 local field-aligned spectrum
+    # Detailed conservation analysis
+    print("\n=== DETAILED CONSERVATION ANALYSIS ===")
+    mass_now = float(cp.sum(rho))
+    E_now = float(cp.sum(E_total))
+    Lz_now = float(cp.sum(rho * (X*vy - Y*vx)))
+    px_now = float(cp.sum(mx))
+    py_now = float(cp.sum(my))
+    pz_now = float(cp.sum(mz))
+    
+    mass_drift = 100 * (mass_now - mass0) / (mass0 + 1e-12)
+    E_drift = 100 * (E_now - E0) / (E0 + 1e-12)
+    Lz_drift = 100 * (Lz_now - Lz0) / (Lz0 + 1e-12)
+    px_drift = 100 * (px_now - px0) / (px0 + 1e-12) if px0 != 0 else 0
+    py_drift = 100 * (py_now - py0) / (py0 + 1e-12) if py0 != 0 else 0
+    pz_drift = 100 * (pz_now - pz0) / (pz0 + 1e-12) if pz0 != 0 else 0
+    
+    print(f"Mass drift          : {mass_drift:.6f}%")
+    print(f"Energy drift        : {E_drift:.6f}%")
+    print(f"Angular momentum Lz : {Lz_drift:.6f}%")
+    print(f"Linear momentum Px  : {px_drift:.6f}%")
+    print(f"Linear momentum Py  : {py_drift:.6f}%")
+    print(f"Linear momentum Pz  : {pz_drift:.6f}%")
+    
+    # Energy breakdown
+    kin = 0.5 * float(cp.sum(rho * vtot**2))
+    therm = float(cp.sum(p_thermal / (gamma - 1)))
+    mag = 0.5 * float(cp.sum(B2))
+    cr = float(cp.sum(u_cr))
+    total_E = kin + therm + mag + cr
+    print(f"\nEnergy breakdown:")
+    print(f"  Kinetic   : {kin:.4e} ({100*kin/total_E:.2f}%)")
+    print(f"  Thermal   : {therm:.4e} ({100*therm/total_E:.2f}%)")
+    print(f"  Magnetic  : {mag:.4e} ({100*mag/total_E:.2f}%)")
+    print(f"  CR        : {cr:.4e} ({100*cr/total_E:.2f}%)")
+    print(f"  Total     : {total_E:.4e}")
+    
+    # GS95 spectrum
     mid = N//2
     b = cp.stack([Bx_c[:,:,mid], By_c[:,:,mid], Bz_c[:,:,mid]], axis=-1)
     b_norm = cp.linalg.norm(b, axis=-1, keepdims=True) + 1e-8
@@ -391,4 +436,4 @@ run_simulation(False, True)
 print("\nRunning DM mode...")
 run_simulation(True, True)
 
-print("✅ v10.2 complete! Full code with no missing blocks and p_thermal order fixed.")
+print("✅ v10.2 complete! Detailed conservation analysis added.")
