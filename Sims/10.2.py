@@ -2,7 +2,7 @@ import cupy as cp
 import numpy as np
 import matplotlib.pyplot as plt
 
-print("🌌 Plasma Cosmology v10.2 — FULL MUSCL + HLL Conservative MHD + Diagnostics")
+print("🌌 Plasma Cosmology v10.2 — FULL MUSCL + HLL Conservative MHD + NaN Handling + Debug Prints")
 
 N = 128
 L = 60.0
@@ -82,6 +82,10 @@ def run_simulation(use_dm, use_cr=True):
     mass0 = float(cp.sum(rho))
     
     for step in range(steps):
+        # Debug prints at start of loop
+        if step % 50 == 0:
+            print(f"Debug step {step}: rho min/max = {rho.min().get():.2e}/{rho.max().get():.2e} | p_thermal min/max = {p_thermal.min().get():.2e}/{p_thermal.max().get():.2e} | B2 max = {B2.max().get():.2e} | vtot max = {vtot.max().get():.2e}")
+        
         Bx_c = (Bx[:-1] + Bx[1:])/2
         By_c = (By[:,:-1] + By[:,1:])/2
         Bz_c = (Bz[:,:,:-1] + Bz[:,:,1:])/2
@@ -280,6 +284,17 @@ def run_simulation(use_dm, use_cr=True):
         By[:,1:-1] -= dt * (psi[:,1:,:] - psi[:,:-1,:]) / dx
         Bz[:,:,1:-1] -= dt * (psi[:,:,1:] - psi[:,:,:-1]) / dx
         
+        # NaN / inf handling after every major update
+        rho = cp.nan_to_num(rho, nan=1e-6, posinf=1e-4, neginf=1e-6)
+        mx = cp.nan_to_num(mx, nan=0.0, posinf=max_v_code, neginf=-max_v_code)
+        my = cp.nan_to_num(my, nan=0.0, posinf=max_v_code, neginf=-max_v_code)
+        mz = cp.nan_to_num(mz, nan=0.0, posinf=max_v_code, neginf=-max_v_code)
+        E_total = cp.nan_to_num(E_total, nan=1e-5, posinf=1e-4, neginf=1e-5)
+        u_cr = cp.nan_to_num(u_cr, nan=1e-6, posinf=1e-4, neginf=1e-6)
+        Bx = cp.nan_to_num(Bx, nan=0.0, posinf=1.0, neginf=-1.0)
+        By = cp.nan_to_num(By, nan=0.0, posinf=1.0, neginf=-1.0)
+        Bz = cp.nan_to_num(Bz, nan=0.0, posinf=1.0, neginf=-1.0)
+        
         if step % 50 == 0 or step == steps-1:
             Bmax = cp.sqrt(B2).max()
             vmax = cp.sqrt(vx**2 + vy**2 + vz**2).max()
@@ -333,8 +348,8 @@ def run_simulation(use_dm, use_cr=True):
     a_JxB_r = ((JxB_x * r_hat_x + JxB_y * r_hat_y) / (rho + 1e-6))[:,:,mid].flatten().get()
     tension_r = (Bx_c * cp.gradient(Bx_c, dx, axis=0) + By_c * cp.gradient(By_c, dx, axis=1) + Bz_c * cp.gradient(Bz_c, dx, axis=2)) / (rho + 1e-6)
     a_tension_r = tension_r[:,:,mid].flatten().get()
-    a_press_r = - (cp.gradient(P_total, dx, axis=0) * r_hat_x + cp.gradient(P_total, dx, axis=1) * r_hat_y)[:,:,mid].flatten().get() / (rho[:,:,mid] + 1e-6)
-    a_turb_r = - (cp.gradient(P_turb, dx, axis=0) * r_hat_x + cp.gradient(P_turb, dx, axis=1) * r_hat_y)[:,:,mid].flatten().get() / (rho[:,:,mid] + 1e-6)
+    a_press_r = - ((cp.gradient(P_total, dx, axis=0) * r_hat_x + cp.gradient(P_total, dx, axis=1) * r_hat_y)[:,:,mid] / (rho[:,:,mid] + 1e-6)).flatten().get()
+    a_turb_r = - ((cp.gradient(P_turb, dx, axis=0) * r_hat_x + cp.gradient(P_turb, dx, axis=1) * r_hat_y)[:,:,mid] / (rho[:,:,mid] + 1e-6)).flatten().get()
     a_grav_r = ((cp.gradient(-G*M_enc_dm, dx, axis=0) * X + cp.gradient(-G*M_enc_dm, dx, axis=1) * Y) / r_cyl[:,:,mid]).flatten().get()
     
     bins = np.linspace(0, L/2, 60)
