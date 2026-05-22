@@ -69,7 +69,7 @@ def run_simulation(use_dm, use_cr=True):
     vx = -v_phi_eq * (Y / r_cyl)
     vx += 0.05 * v_phi_eq * cp.random.normal(0,1,rho.shape,dtype=cp.float32)
     vy += 0.05 * v_phi_eq * cp.random.normal(0,1,rho.shape,dtype=cp.float32)
-    vz = cp.zeros_like(rho, dtype=cp.float32)  # vz defined here
+    vz = cp.zeros_like(rho, dtype=cp.float32)
     
     p_th = 0.002 * rho
     E_total = p_th/(gamma-1) + 0.5*rho*(vx**2 + vy**2 + vz**2) + u_cr
