@@ -2,7 +2,7 @@ import cupy as cp
 import numpy as np
 import matplotlib.pyplot as plt
 
-print("🌌 Plasma Cosmology v10.2 — FULL MUSCL + HLL Conservative MHD + NaN Handling + Debug Prints")
+print("🌌 Plasma Cosmology v10.2 — FULL MUSCL + HLL Conservative MHD + Diagnostics (p_thermal order fixed)")
 
 N = 128
 L = 60.0
@@ -82,18 +82,20 @@ def run_simulation(use_dm, use_cr=True):
     mass0 = float(cp.sum(rho))
     
     for step in range(steps):
-        # Debug prints at start of loop
-        if step % 50 == 0:
-            print(f"Debug step {step}: rho min/max = {rho.min().get():.2e}/{rho.max().get():.2e} | p_thermal min/max = {p_thermal.min().get():.2e}/{p_thermal.max().get():.2e} | B2 max = {B2.max().get():.2e} | vtot max = {vtot.max().get():.2e}")
-        
         Bx_c = (Bx[:-1] + Bx[1:])/2
         By_c = (By[:,:-1] + By[:,1:])/2
         Bz_c = (Bz[:,:,:-1] + Bz[:,:,1:])/2
         B2 = Bx_c**2 + By_c**2 + Bz_c**2
         
         vtot = cp.sqrt(vx**2 + vy**2 + vz**2)
+        
+        # p_thermal is calculated FIRST, before any debug or gradient
         p_thermal = (gamma-1)*(E_total - 0.5*rho*vtot**2 - B2/2 - u_cr)
         p_thermal = cp.maximum(p_thermal, 1e-4)
+        
+        # Debug print after p_thermal is ready
+        if step % 50 == 0:
+            print(f"Debug step {step}: rho min/max = {rho.min().get():.2e}/{rho.max().get():.2e} | p_thermal min/max = {p_thermal.min().get():.2e}/{p_thermal.max().get():.2e} | B2 max = {B2.max().get():.2e} | vtot max = {vtot.max().get():.2e}")
         
         P_turb = rho * (0.3 * cp.ones_like(rho))**2
         P_total = p_thermal + P_turb
@@ -284,7 +286,7 @@ def run_simulation(use_dm, use_cr=True):
         By[:,1:-1] -= dt * (psi[:,1:,:] - psi[:,:-1,:]) / dx
         Bz[:,:,1:-1] -= dt * (psi[:,:,1:] - psi[:,:,:-1]) / dx
         
-        # NaN / inf handling after every major update
+        # NaN handling after every major update
         rho = cp.nan_to_num(rho, nan=1e-6, posinf=1e-4, neginf=1e-6)
         mx = cp.nan_to_num(mx, nan=0.0, posinf=max_v_code, neginf=-max_v_code)
         my = cp.nan_to_num(my, nan=0.0, posinf=max_v_code, neginf=-max_v_code)
@@ -389,4 +391,4 @@ run_simulation(False, True)
 print("\nRunning DM mode...")
 run_simulation(True, True)
 
-print("✅ v10.2 complete! Full code with no missing blocks.")
+print("✅ v10.2 complete! Full code with no missing blocks and p_thermal order fixed.")
