@@ -87,12 +87,13 @@ mx = rho * vx
 my = rho * vy
 mz = rho * vz
 
-# Seed B-field
+# Seed B-field (fixed staggered broadcasting)
 B0 = 5.0
-Bz += B0 * cp.exp(-r_cyl**2 / 200.0)
 Bphi = 2.0 * cp.exp(-r_cyl / 12.0)
-Bx -= Bphi * (Y / (r_cyl + 1e-8))
-By += Bphi * (X / (r_cyl + 1e-8))
+
+Bz += B0 * cp.exp(-r_cyl**2 / 200.0)[:, :, :-1]   # trim to match z-faces
+Bx -= Bphi * (Y / (r_cyl + 1e-8))[:-1, :, :]     # trim to match x-faces
+By += Bphi * (X / (r_cyl + 1e-8))[:, :-1, :]     # trim to match y-faces
 
 Bx_c = 0.5 * (Bx[:-1,:,:] + Bx[1:,:,:])
 By_c = 0.5 * (By[:,:-1,:] + By[:,1:,:])
@@ -384,7 +385,7 @@ print(f"Linear momentum Py  : {100 * (py_now - py0) / (py0 + 1e-12):.6f}%")
 print(f"Linear momentum Pz  : {100 * (pz_now - pz0) / (pz0 + 1e-12):.6f}%")
 
 # Energy breakdown
-kin = 0.5 * float(cp.sum(rho * vtot2))
+kin = 0.5 * float(cp.sum(rho * (vx**2 + vy**2 + vz**2)))
 therm = float(cp.sum(p_thermal / (gamma - 1)))
 mag = 0.5 * float(cp.sum(B2 / mu0))
 cr = float(cp.sum(u_cr))
