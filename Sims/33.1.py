@@ -2,8 +2,8 @@ import cupy as cp
 import numpy as np
 import matplotlib.pyplot as plt
 
-print("🌌 Plasma Cosmology v33.0 — FULL COMPLETE CODE (NO MISSING BLOCKS)")
-print("Exact HLLD + Yee CT + NFW Mass Function + Rankine-Hugoniot + Entropy | N=256 fixed")
+print("🌌 Plasma Cosmology v33.0 — FULL COMPLETE CODE (MUSCL AXIS SLICING FIXED)")
+print("Exact HLLD + Yee CT + NFW + Rankine-Hugoniot + Entropy | N=256 fixed")
 
 # ====================== PARAMETERS ======================
 N = 256
@@ -85,32 +85,35 @@ mx = rho * vx
 my = rho * vy
 mz = rho * vz
 
-# ====================== FIXED STAGGERED B-FIELD SEEDING (CORRECT GEOMETRY) ======================
+# ====================== STAGGERED B-FIELD SEEDING (EXACT FIX) ======================
 B0 = 5.0
-Bphi = 2.0 * cp.exp(-r_cyl / 12.0)
 
-# Separate staggered meshgrids for each face
+# Bx geometry (x-faces)
 X_Bx = cp.linspace(-L/2 - dx/2, L/2 + dx/2, N+1, dtype=cp.float32)
 Y_Bx = cp.linspace(-L/2, L/2, N, dtype=cp.float32)
 Z_Bx = cp.linspace(-L/2, L/2, N, dtype=cp.float32)
 XBX, YBX, ZBX = cp.meshgrid(X_Bx, Y_Bx, Z_Bx, indexing='ij')
 r_Bx = cp.sqrt(XBX**2 + YBX**2)
 
+# By geometry (y-faces)
 X_By = cp.linspace(-L/2, L/2, N, dtype=cp.float32)
 Y_By = cp.linspace(-L/2 - dx/2, L/2 + dx/2, N+1, dtype=cp.float32)
 Z_By = cp.linspace(-L/2, L/2, N, dtype=cp.float32)
 XBY, YBY, ZBY = cp.meshgrid(X_By, Y_By, Z_By, indexing='ij')
 r_By = cp.sqrt(XBY**2 + YBY**2)
 
+# Bz geometry (z-faces)
 X_Bz = cp.linspace(-L/2, L/2, N, dtype=cp.float32)
 Y_Bz = cp.linspace(-L/2, L/2, N, dtype=cp.float32)
 Z_Bz = cp.linspace(-L/2 - dx/2, L/2 + dx/2, N+1, dtype=cp.float32)
 XBZ, YBZ, ZBZ = cp.meshgrid(X_Bz, Y_Bz, Z_Bz, indexing='ij')
 r_Bz = cp.sqrt(XBZ**2 + YBZ**2)
 
-# Seed fields on correct staggered geometry
-Bx[:] = -Bphi * (YBX / (r_Bx + 1e-8))
-By[:] =  Bphi * (XBY / (r_By + 1e-8))
+# Seed fields
+Bphi_Bx = 2.0 * cp.exp(-r_Bx / 12.0)
+Bphi_By = 2.0 * cp.exp(-r_By / 12.0)
+Bx[:] = -Bphi_Bx * (YBX / (r_Bx + 1e-8))
+By[:] =  Bphi_By * (XBY / (r_By + 1e-8))
 Bz[:] = B0 * cp.exp(-r_Bz**2 / 200.0)
 
 # Recompute centered fields
@@ -135,20 +138,24 @@ def compute_divB():
     divB = (cp.gradient(Bx_c, dx, axis=0) + cp.gradient(By_c, dx, axis=1) + cp.gradient(Bz_c, dx, axis=2))
     return divB
 
-# ====================== MUSCL RECONSTRUCTION ======================
+# ====================== FIXED MUSCL RECONSTRUCTION (AXIS SLICING CORRECTED) ======================
 def muscl_reconstruct(U, axis):
     slope = cp.zeros_like(U)
     if axis == 0:
         slope[1:-1] = 0.5 * (U[2:] - U[:-2])
         slope = cp.sign(slope) * cp.minimum(cp.abs(slope), cp.minimum(cp.abs(U[1:-1] - U[:-2]), cp.abs(U[2:] - U[1:-1])))
+        U_L = U[:-1] + 0.5 * slope[:-1]
+        U_R = U[1:] - 0.5 * slope[1:]
     elif axis == 1:
         slope[:,1:-1] = 0.5 * (U[:,2:] - U[:,:-2])
         slope = cp.sign(slope) * cp.minimum(cp.abs(slope), cp.minimum(cp.abs(U[:,1:-1] - U[:,:-2]), cp.abs(U[:,2:] - U[:,1:-1])))
+        U_L = U[:, :-1] + 0.5 * slope[:, :-1]
+        U_R = U[:, 1:] - 0.5 * slope[:, 1:]
     elif axis == 2:
         slope[:,:,1:-1] = 0.5 * (U[:,:,2:] - U[:,:,:-2])
         slope = cp.sign(slope) * cp.minimum(cp.abs(slope), cp.minimum(cp.abs(U[:,:,1:-1] - U[:,:,:-2]), cp.abs(U[:,:,2:] - U[:,:,1:-1])))
-    U_L = U[:-1] + 0.5 * slope[:-1]
-    U_R = U[1:] - 0.5 * slope[1:]
+        U_L = U[:,:, :-1] + 0.5 * slope[:,:, :-1]
+        U_R = U[:,:, 1:] - 0.5 * slope[:,:, 1:]
     return U_L, U_R
 
 # ====================== EXACT HLLD RIEMANN SOLVER ======================
