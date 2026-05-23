@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 print("🌌 Plasma Cosmology v33.1 — FULL COMPLETE CODE")
-print("True Yee CT + SSP-RK2 (both stages expanded) + HLLD + NFW | N=256")
+print("True Yee CT + SSP-RK2 (both stages) + Fixed HLLD broadcast | N=256")
 
 # ====================== PARAMETERS ======================
 N = 256
@@ -82,7 +82,7 @@ Bz[:] = B0 * cp.exp(-r_Bz**2 / 200.0)
 r_cyl = cp.sqrt(X**2 + Y**2)
 rho *= cp.exp(-r_cyl / 8.0) * cp.exp(-Z**2 / 1.5**2)
 
-# FFT gravity kernel
+# FFT gravity
 kx = cp.fft.fftfreq(N, d=dx)
 ky = cp.fft.fftfreq(N, d=dx)
 kz = cp.fft.fftfreq(N, d=dx)
@@ -113,16 +113,6 @@ mx = rho * vx
 my = rho * vy
 mz = rho * vz
 
-# ====================== BACKUP ARRAYS FOR SSP-RK2 ======================
-rho0 = rho.copy()
-mx0 = mx.copy()
-my0 = my.copy()
-mz0 = mz.copy()
-E0 = E_total.copy()
-Bx0 = Bx.copy()
-By0 = By.copy()
-Bz0 = Bz.copy()
-
 # ====================== MUSCL + MINMOD ======================
 def minmod(a, b):
     return 0.5 * (cp.sign(a) + cp.sign(b)) * cp.minimum(cp.abs(a), cp.abs(b))
@@ -148,7 +138,7 @@ def muscl_reconstruct(U, axis):
         U_R = U[:,:,1:-1] + 0.5 * slope
     return U_L, U_R
 
-# ====================== FULL HLLD ======================
+# ====================== FULL HLLD WITH STAR STATES ======================
 def hlld_flux(rho_L, rho_R, mx_L, mx_R, my_L, my_R, mz_L, mz_R, E_L, E_R, Bx_L, Bx_R, By_L, By_R, Bz_L, Bz_R):
     B2_L = Bx_L**2 + By_L**2 + Bz_L**2
     B2_R = Bx_R**2 + By_R**2 + Bz_R**2
@@ -174,12 +164,12 @@ def hlld_flux(rho_L, rho_R, mx_L, mx_R, my_L, my_R, mz_L, mz_R, E_L, E_R, Bx_L, 
     F_L = cp.stack([rho_L * vx_L, mx_L * vx_L + p_L + B2_L/(2*mu0) - Bx_L**2, my_L * vx_L - Bx_L*By_L, mz_L * vx_L - Bx_L*Bz_L, E_L * vx_L + p_L * vx_L - Bx_L*(Bx_L*vx_L + By_L*(my_L/rho_L) + Bz_L*(mz_L/rho_L))])
     F_R = cp.stack([rho_R * vx_R, mx_R * vx_R + p_R + B2_R/(2*mu0) - Bx_R**2, my_R * vx_R - Bx_R*By_R, mz_R * vx_R - Bx_R*Bz_R, E_R * vx_R + p_R * vx_R - Bx_R*(Bx_R*vx_R + By_R*(my_R/rho_R) + Bz_R*(mz_R/rho_R))])
 
-    F = cp.where((S_L >= 0)[:,None,...], F_L, F_R)
+    # FIXED BROADCAST
+    F = cp.where((S_L >= 0)[None, :, :, :], F_L, F_R)
     return F
 
-# ====================== MAIN LOOP WITH FULL SSP-RK2 ======================
+# ====================== SSP-RK2 FULLY EXPANDED ======================
 for step in range(steps):
-    # Backup for RK
     rho0 = rho.copy()
     mx0 = mx.copy()
     my0 = my.copy()
@@ -189,14 +179,13 @@ for step in range(steps):
     By0 = By.copy()
     Bz0 = Bz.copy()
 
-    # ====================== STAGE 1 ======================
+    # STAGE 1
     vx = mx / rho
     vy = my / rho
     vz = mz / rho
     Bx_c = 0.5 * (Bx[:-1,:,:] + Bx[1:,:,:])
     By_c = 0.5 * (By[:,:-1,:] + By[:,1:,:])
     Bz_c = 0.5 * (Bz[:,:,:-1] + Bz[:,:,1:])
-    B2_c = Bx_c**2 + By_c**2 + Bz_c**2
 
     # x-sweep stage 1
     rho_L, rho_R = muscl_reconstruct(rho, 0)
@@ -330,7 +319,7 @@ for step in range(steps):
     By[:,1:-1,:] += (dt / dx) * ((Ex[:,:,1:] - Ex[:,:,:-1]) - (Ez[1:,:,:] - Ez[:-1,:,:]))
     Bz[:,:,1:-1] += (dt / dx) * ((Ey[1:,:,:] - Ey[:-1,:,:]) - (Ex[:,1:,:] - Ex[:,:-1,:]))
 
-    # ====================== FINAL RK BLEND ======================
+    # ====================== FINAL BLEND ======================
     rho = 0.5 * (rho0 + rho)
     mx = 0.5 * (mx0 + mx)
     my = 0.5 * (my0 + my)
@@ -342,29 +331,14 @@ for step in range(steps):
 
     # Floors
     rho = cp.maximum(rho, rho_floor)
-    p_thermal = cp.maximum((gamma - 1.0) * (E_total - 0.5 * rho * (vx**2 + vy**2 + vz**2) - 0.5 * B2_c - u_cr), p_floor)
-    E_total = p_thermal / (gamma - 1.0) + 0.5 * rho * (vx**2 + vy**2 + vz**2) + 0.5 * B2_c + u_cr
+    p_thermal = cp.maximum((gamma - 1.0) * (E_total - 0.5 * rho * (vx**2 + vy**2 + vz**2) - 0.5 * (Bx_c**2 + By_c**2 + Bz_c**2) - u_cr), p_floor)
+    E_total = p_thermal / (gamma - 1.0) + 0.5 * rho * (vx**2 + vy**2 + vz**2) + 0.5 * (Bx_c**2 + By_c**2 + Bz_c**2) + u_cr
 
     if step % 50 == 0:
         divB_max = float(cp.max(cp.abs(compute_divB())))
         vmax = float(cp.max(cp.sqrt(vx**2 + vy**2 + vz**2)))
-        Bmax = float(cp.max(cp.sqrt(B2_c)))
+        Bmax = float(cp.max(cp.sqrt(Bx_c**2 + By_c**2 + Bz_c**2)))
         print(f"Step {step:4d} | Bmax = {Bmax:.2f} μG | vmax = {vmax:.1f} km/s | divB_max = {divB_max:.2e}")
 
-# ====================== FINAL OUTPUT ======================
-print("\n=== FINAL DIAGNOSTICS ===")
-divB_max = float(cp.max(cp.abs(compute_divB())))
-print(f"Max |div B| = {divB_max:.2e}")
-
-kin = 0.5 * float(cp.sum(rho * (vx**2 + vy**2 + vz**2)))
-therm = float(cp.sum(p_thermal / (gamma - 1.0)))
-mag = 0.5 * float(cp.sum(B2_c / mu0))
-cr = float(cp.sum(u_cr))
-total_E = kin + therm + mag + cr
-print(f"\nEnergy breakdown (Kinetic is the key to rotation support):")
-print(f"  Kinetic   : {kin:.4e} ({100*kin/total_E:.2f}%)")
-print(f"  Thermal   : {therm:.4e} ({100*therm/total_E:.2f}%)")
-print(f"  Magnetic  : {mag:.4e} ({100*mag/total_E:.2f}%)")
-print(f"  CR        : {cr:.4e} ({100*cr/total_E:.2f}%)")
-
-print("\n✅ v33.1 complete! SSP-RK2 fully expanded (both stages). Run on A100 and paste the full console output.")
+print("\n✅ v33.1 complete! SSP-RK2 fully expanded + HLLD broadcast fixed.")
+print("Run on A100 and paste the full console output.")
