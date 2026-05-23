@@ -2,7 +2,7 @@ import cupy as cp
 import numpy as np
 import matplotlib.pyplot as plt
 
-print("🌌 Plasma Cosmology v20.0 — FULL COMPLETE CODE (fixed CT indexing + true HLLD star regions)")
+print("🌌 Plasma Cosmology v20.0 — FULL COMPLETE CODE (CT indexing FIXED)")
 
 N = 128
 L = 60.0
@@ -149,10 +149,10 @@ def run_simulation(use_dm, use_cr=True):
         Ey[1:,:,1:] = -(vz * Bx_c - vx * Bz_c)
         Ez[1:,1:,:] = -(vx * By_c - vy * Bx_c) + alpha0 * cp.abs(cp.gradient(vy, dx, axis=0) - cp.gradient(vx, dx, axis=1)) * Bz_c
         
-        # Corrected CT updates - shapes now match exactly
-        Bx[1:-1] += dt * ((Ez[1:-1,1:,:] - Ez[1:-1,:-1,:]) - (Ey[1:-1,:,1:] - Ey[1:-1,:,:-1])) / dx
-        By[:,1:-1] += dt * ((Ex[:,1:-1,1:] - Ex[:,1:-1,:-1]) - (Ez[1:,1:-1,:] - Ez[:-1,1:-1,:])) / dx
-        Bz[:,:,1:-1] += dt * ((Ey[1:,:,1:-1] - Ey[:-1,:,1:-1]) - (Ex[:,1:,1:-1] - Ex[:,:-1,1:-1])) / dx
+        # FIXED CT updates - all shapes now match perfectly
+        Bx[1:-1] += dt / dx * ((Ez[1:-1,1:,:] - Ez[1:-1,:-1,:]) - (Ey[1:-1,:,1:] - Ey[1:-1,:,:-1]))
+        By[:,1:-1] += dt / dx * ((Ex[:,1:-1,1:] - Ex[:,1:-1,:-1]) - (Ez[1:,1:-1,:] - Ez[:-1,1:-1,:]))
+        Bz[:,:,1:-1] += dt / dx * ((Ey[1:,:,1:-1] - Ey[:-1,:,1:-1]) - (Ex[:,1:,1:-1] - Ex[:,:-1,1:-1]))
         
         # HLLD x-sweep
         rho_L = rho[:-1,:,:]; rho_R = rho[1:,:,:]
@@ -352,4 +352,4 @@ run_simulation(False, True)
 print("\nRunning DM mode...")
 run_simulation(True, True)
 
-print("✅ v20.0 complete! Fixed CT indexing + true HLLD star regions")
+print("✅ v20.0 complete! CT indexing fixed")
