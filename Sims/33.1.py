@@ -21,7 +21,6 @@ rho_floor = 1e-6
 p_floor = 1e-4
 alpha0 = 0.008
 v_phi_factor = 0.10
-USE_DM = True  # Set False for pure-plasma mode
 
 # Feedback
 rho_SF = 0.1
@@ -36,7 +35,6 @@ r_s = 20.0
 rho0 = M_vir / (4 * cp.pi * r_s**3 * (cp.log(1 + c) - c / (1 + c)))
 
 def nfw_enclosed_mass(r):
-    """NFW enclosed mass function (fully defined)"""
     x = r / r_s + 1e-12
     return 4 * cp.pi * rho0 * r_s**3 * (cp.log(1 + x) - x / (1 + x))
 
@@ -71,7 +69,7 @@ phi = cp.real(cp.fft.ifftn(phi_k))
 g_r = -cp.gradient(phi, dx, axis=0) * (X / (r_cyl + 1e-8)) - cp.gradient(phi, dx, axis=1) * (Y / (r_cyl + 1e-8))
 
 r3d = cp.sqrt(X**2 + Y**2 + Z**2 + 1e-12)
-M_dm_enc = nfw_enclosed_mass(r3d) if USE_DM else 0.0
+M_dm_enc = nfw_enclosed_mass(r3d)
 g_dm = -G * M_dm_enc / r3d**2
 g_r += g_dm * (r_cyl / r3d)
 
@@ -87,20 +85,33 @@ mx = rho * vx
 my = rho * vy
 mz = rho * vz
 
-# ====================== FIXED STAGGERED B-FIELD SEEDING ======================
+# ====================== FIXED STAGGERED B-FIELD SEEDING (CORRECT GEOMETRY) ======================
 B0 = 5.0
 Bphi = 2.0 * cp.exp(-r_cyl / 12.0)
 
-r_cyl_Bx = cp.pad(r_cyl, ((0,1),(0,0),(0,0)), mode='edge')
-r_cyl_By = cp.pad(r_cyl, ((0,0),(0,1),(0,0)), mode='edge')
-r_cyl_Bz = cp.pad(r_cyl, ((0,0),(0,0),(0,1)), mode='edge')
+# Separate staggered meshgrids for each face
+X_Bx = cp.linspace(-L/2 - dx/2, L/2 + dx/2, N+1, dtype=cp.float32)
+Y_Bx = cp.linspace(-L/2, L/2, N, dtype=cp.float32)
+Z_Bx = cp.linspace(-L/2, L/2, N, dtype=cp.float32)
+XBX, YBX, ZBX = cp.meshgrid(X_Bx, Y_Bx, Z_Bx, indexing='ij')
+r_Bx = cp.sqrt(XBX**2 + YBX**2)
 
-X_Bx = cp.pad(X, ((0,1),(0,0),(0,0)), mode='edge')
-Y_By = cp.pad(Y, ((0,0),(0,1),(0,0)), mode='edge')
+X_By = cp.linspace(-L/2, L/2, N, dtype=cp.float32)
+Y_By = cp.linspace(-L/2 - dx/2, L/2 + dx/2, N+1, dtype=cp.float32)
+Z_By = cp.linspace(-L/2, L/2, N, dtype=cp.float32)
+XBY, YBY, ZBY = cp.meshgrid(X_By, Y_By, Z_By, indexing='ij')
+r_By = cp.sqrt(XBY**2 + YBY**2)
 
-Bz += B0 * cp.exp(-r_cyl_Bz**2 / 200.0)
-Bx -= Bphi * (Y_By / (r_cyl_Bx + 1e-8))
-By += Bphi * (X_Bx / (r_cyl_By + 1e-8))
+X_Bz = cp.linspace(-L/2, L/2, N, dtype=cp.float32)
+Y_Bz = cp.linspace(-L/2, L/2, N, dtype=cp.float32)
+Z_Bz = cp.linspace(-L/2 - dx/2, L/2 + dx/2, N+1, dtype=cp.float32)
+XBZ, YBZ, ZBZ = cp.meshgrid(X_Bz, Y_Bz, Z_Bz, indexing='ij')
+r_Bz = cp.sqrt(XBZ**2 + YBZ**2)
+
+# Seed fields on correct staggered geometry
+Bx[:] = -Bphi * (YBX / (r_Bx + 1e-8))
+By[:] =  Bphi * (XBY / (r_By + 1e-8))
+Bz[:] = B0 * cp.exp(-r_Bz**2 / 200.0)
 
 # Recompute centered fields
 Bx_c = 0.5 * (Bx[:-1,:,:] + Bx[1:,:,:])
@@ -155,7 +166,6 @@ def hlld_flux(rho_L, rho_R, mx_L, mx_R, my_L, my_R, mz_L, mz_R, E_L, E_R, Bx_L, 
     S_star = (S_L * rho_L * vx_L - S_R * rho_R * vx_R + p_R - p_L) / (rho_L * (S_L - vx_L) - rho_R * (S_R - vx_R) + 1e-12)
     rho_starL = rho_L * (S_L - vx_L) / (S_L - S_star + 1e-12)
     rho_starR = rho_R * (S_R - vx_R) / (S_R - S_star + 1e-12)
-    # Full HLLD flux
     F = cp.stack([
         rho_L * vx_L,
         mx_L * vx_L + p_L + B2_L / (2 * mu0) - Bx_L**2,
