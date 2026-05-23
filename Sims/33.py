@@ -29,7 +29,7 @@ epsilon_SF = 0.01
 SN_energy = 1e-3
 SN_momentum = 0.05
 
-# NFW DM halo (M_vir = 0 for pure-plasma mode)
+# NFW DM halo (M_vir = 0 for pure-plasma)
 M_vir = 1.2e12
 c = 12.0
 r_s = 20.0
@@ -91,10 +91,10 @@ mz = rho * vz
 B0 = 5.0
 Bphi = 2.0 * cp.exp(-r_cyl / 12.0)
 
-# Correct slicing for each staggered direction
-Bz += B0 * cp.exp(-r_cyl**2 / 200.0)[:, :, :-1]          # match z-faces (N,N,N+1)
-Bx -= Bphi * (Y / (r_cyl + 1e-8))[:-1, :, :]             # match x-faces (N+1,N,N)
-By += Bphi * (X / (r_cyl + 1e-8))[:, :-1, :]             # match y-faces (N,N+1,N)
+# Safe broadcasting to staggered grids
+Bz += B0 * cp.exp(-r_cyl**2 / 200.0)
+Bx -= Bphi * (Y / (r_cyl + 1e-8))
+By += Bphi * (X / (r_cyl + 1e-8))
 
 # Recompute centered fields after seeding
 Bx_c = 0.5 * (Bx[:-1,:,:] + Bx[1:,:,:])
