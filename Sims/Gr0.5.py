@@ -2,7 +2,7 @@ import cupy as cp
 import numpy as np
 import matplotlib.pyplot as plt
 
-print("🌌 ALADIN Plasma Cosmology v0.5 — Cell-Centered Safe Version")
+print("🌌 ALADIN Plasma Cosmology v0.5 — Pure Cell-Centered Safe Version")
 
 # ====================== PARAMETERS ======================
 N = 256
@@ -264,7 +264,7 @@ print(f"Angular momentum Lz : {Lz_drift:.6f}%")
 print(f"Linear momentum Px  : {px_drift:.6f}%")
 print(f"Linear momentum Py  : {py_drift:.6f}%")
 print(f"Linear momentum Pz  : {pz_drift:.6f}%")
-
+    
 # Energy breakdown
 kin = 0.5 * float(cp.sum(rho * vtot**2))
 therm = float(cp.sum(p_thermal / (gamma - 1)))
