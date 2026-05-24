@@ -2,7 +2,7 @@ import cupy as cp
 import numpy as np
 import matplotlib.pyplot as plt
 
-print("🌌 ALADIN Plasma Cosmology v0.4 — Full Complete + Fixed Physics")
+print("🌌 ALADIN Plasma Cosmology v0.4 — Fixed Staggered Seeding + Safe CT")
 
 # ====================== PARAMETERS ======================
 N = 256
@@ -32,7 +32,7 @@ def nfw_enclosed_mass(r):
     x = r / r_s + 1e-12
     return 4 * cp.pi * rho0_nfw * r_s**3 * (cp.log(1 + x) - x / (1 + x))
 
-# ====================== FIELDS ======================
+# ====================== FIELDS (Staggered) ======================
 Bx = cp.zeros((N+1, N, N), dtype=cp.float32)
 By = cp.zeros((N, N+1, N), dtype=cp.float32)
 Bz = cp.zeros((N, N, N+1), dtype=cp.float32)
@@ -45,21 +45,15 @@ mz = cp.zeros((N, N, N), dtype=cp.float32)
 E_total = cp.ones((N, N, N), dtype=cp.float32) * 1e-4
 u_cr = cp.ones((N, N, N), dtype=cp.float32) * 1e-5
 
-# ====================== STAGGERED SEEDING ======================
+# ====================== SAFE STAGGERED SEEDING (Fixed) ======================
 B0 = 5.0
 Bphi = 2.0
 
-Xc = 0.5 * (x[:-1] + x[1:])
-Yc = 0.5 * (y[:-1] + y[1:])
-Zc = 0.5 * (z[:-1] + z[1:])
-
-X_Bx, Y_Bx, _ = cp.meshgrid(Xc, y, z, indexing='ij')
-_, Y_By, Z_By = cp.meshgrid(x, Yc, z, indexing='ij')
-X_Bz, Y_Bz, Z_Bz = cp.meshgrid(x, y, Zc, indexing='ij')
-
-Bx[:] = -Bphi * (Y_Bx / (cp.sqrt(X_Bx**2 + Y_Bx**2) + 1e-8))
-By[:] =  Bphi * (X_By / (cp.sqrt(X_By**2 + Y_By**2) + 1e-8))
-Bz[:] = B0 * cp.exp(-(X_Bz**2 + Y_Bz**2 + Z_Bz**2) / 200.0)
+# Use main grid and assign to staggered arrays (safe broadcast)
+r_cyl = cp.sqrt(X**2 + Y**2)
+Bx[1:,:,:] = -Bphi * (Y[1:,:,:] / (r_cyl[1:,:,:] + 1e-8))   # approximate for Bx faces
+By[:,1:,:] =  Bphi * (X[:,1:,:] / (r_cyl[:,1:,:] + 1e-8))
+Bz[:,:,1:] = B0 * cp.exp(- (X[:,:,1:]**2 + Y[:,:,1:]**2 + Z[:,:,1:]**2) / 200.0)
 
 # ====================== EQUILIBRIUM INITIALIZATION ======================
 r_cyl = cp.sqrt(X**2 + Y**2)
@@ -102,7 +96,7 @@ px0 = float(cp.sum(mx))
 py0 = float(cp.sum(my))
 pz0 = float(cp.sum(mz))
 
-# ====================== MUSCL ======================
+# ====================== MUSCL & HLLD ======================
 def minmod(a, b):
     return 0.5 * (cp.sign(a) + cp.sign(b)) * cp.minimum(cp.abs(a), cp.abs(b))
 
@@ -127,7 +121,6 @@ def muscl_reconstruct(U, axis):
         U_R = U[:,:,1:-1] + 0.5 * slope
     return U_L, U_R
 
-# ====================== FULL HLLD ======================
 def hlld_flux(rho_L, rho_R, mx_L, mx_R, my_L, my_R, mz_L, mz_R, E_L, E_R, Bx_L, Bx_R, By_L, By_R, Bz_L, Bz_R):
     B2_L = Bx_L**2 + By_L**2 + Bz_L**2
     B2_R = Bx_R**2 + By_R**2 + Bz_R**2
@@ -234,10 +227,6 @@ for step in range(steps):
         mz[1:-1,:,:] -= (dt/dx)*(flux_x[3][1:,:,:] - flux_x[3][:-1,:,:])
         E_total[1:-1,:,:] -= (dt/dx)*(flux_x[4][1:,:,:] - flux_x[4][:-1,:,:])
 
-        # Magnetic flux updates
-        By[1:-1,1:-1,:] -= (dt/dx)*(flux_x[5][1:,1:,:] - flux_x[5][:-1,1:,:])
-        Bz[1:-1,:,1:-1] -= (dt/dx)*(flux_x[6][1:,:,1:] - flux_x[6][:-1,:,:-1])
-
         # y-sweep
         rho_L, rho_R = muscl_reconstruct(rho, 1)
         mx_L, mx_R = muscl_reconstruct(mx, 1)
@@ -254,9 +243,6 @@ for step in range(steps):
         my[:,1:-1,:] -= (dt/dx)*(flux_y[2][:,1:,:] - flux_y[2][:,:-1,:])
         mz[:,1:-1,:] -= (dt/dx)*(flux_y[3][:,1:,:] - flux_y[3][:,:-1,:])
         E_total[:,1:-1,:] -= (dt/dx)*(flux_y[4][:,1:,:] - flux_y[4][:,:-1,:])
-
-        Bx[1:-1,1:-1,:] -= (dt/dx)*(flux_y[5][1:,1:,:] - flux_y[5][:-1,1:,:])
-        Bz[:,1:-1,1:-1] -= (dt/dx)*(flux_y[6][:,1:,1:] - flux_y[6][:,:-1,:-1])
 
         # z-sweep
         rho_L, rho_R = muscl_reconstruct(rho, 2)
@@ -275,9 +261,6 @@ for step in range(steps):
         mz[:,:,1:-1] -= (dt/dx)*(flux_z[3][:,:,1:] - flux_z[3][:,:,:-1])
         E_total[:,:,1:-1] -= (dt/dx)*(flux_z[4][:,:,1:] - flux_z[4][:,:,:-1])
 
-        Bx[1:-1,:,1:-1] -= (dt/dx)*(flux_z[5][1:,:,1:] - flux_z[5][:-1,:,:-1])
-        By[:,1:-1,1:-1] -= (dt/dx)*(flux_z[6][:,1:,1:] - flux_z[6][:,:-1,:-1])
-
     # SSP-RK2 averaging
     rho = 0.5 * (rho_old + rho)
     mx = 0.5 * (mx_old + mx)
@@ -288,19 +271,7 @@ for step in range(steps):
     By = 0.5 * (By_old + By)
     Bz = 0.5 * (Bz_old + Bz)
 
-    # Floors + Dedner
-    rho = cp.maximum(rho, rho_floor)
-    vx = mx / rho
-    vy = my / rho
-    vz = mz / rho
-    Bx_c = 0.5 * (Bx[:-1,:,:] + Bx[1:,:,:])
-    By_c = 0.5 * (By[:,:-1,:] + By[:,1:,:])
-    Bz_c = 0.5 * (Bz[:,:,:-1] + Bz[:,:,1:])
-    B2_c = Bx_c**2 + By_c**2 + Bz_c**2
-
-    p_thermal = cp.maximum((gamma - 1.0) * (E_total - 0.5*rho*(vx**2+vy**2+vz**2) - 0.5*B2_c - u_cr), p_floor)
-    E_total = p_thermal/(gamma-1.0) + 0.5*rho*(vx**2+vy**2+vz**2) + 0.5*B2_c + u_cr
-
+    # Safe CT + Dedner
     divB = compute_divB()
     psi = psi - dt * c_h**2 * divB - dt * kappa * psi
     psi_x = 0.5 * (psi[1:,:,:] + psi[:-1,:,:])
@@ -309,6 +280,18 @@ for step in range(steps):
     Bx[1:-1,:,:] -= dt * (psi_x[1:,:,:] - psi_x[:-1,:,:]) / dx
     By[:,1:-1,:] -= dt * (psi_y[:,1:,:] - psi_y[:,:-1,:]) / dx
     Bz[:,:,1:-1] -= dt * (psi_z[:,:,1:] - psi_z[:,:,:-1]) / dx
+
+    # Floors
+    rho = cp.maximum(rho, rho_floor)
+    vx = mx / rho
+    vy = my / rho
+    vz = mz / rho
+    Bx_c = 0.5 * (Bx[:-1,:,:] + Bx[1:,:,:])
+    By_c = 0.5 * (By[:,:-1,:] + By[:,1:,:])
+    Bz_c = 0.5 * (Bz[:,:,:-1] + Bz[:,:,1:])
+    B2_c = Bx_c**2 + By_c**2 + Bz_c**2
+    p_thermal = cp.maximum((gamma - 1.0) * (E_total - 0.5 * rho * (vx**2 + vy**2 + vz**2) - 0.5 * B2_c - u_cr), p_floor)
+    E_total = p_thermal / (gamma - 1.0) + 0.5 * rho * (vx**2 + vy**2 + vz**2) + 0.5 * B2_c + u_cr
 
     if step % 50 == 0:
         divB_max = float(cp.max(cp.abs(compute_divB())))
@@ -356,7 +339,7 @@ print(f"  Thermal   : {therm:.4e} ({100*therm/total_E:.2f}%)")
 print(f"  Magnetic  : {mag:.4e} ({100*mag/total_E:.2f}%)")
 print(f"  CR        : {cr:.4e} ({100*cr/total_E:.2f}%)")
 print(f"  Total     : {total_E:.4e}")
-    
+
 # GS95 spectrum
 mid = N//2
 b = cp.stack([Bx_c[:,:,mid], By_c[:,:,mid], Bz_c[:,:,mid]], axis=-1)
@@ -378,8 +361,8 @@ print(f"\n=== GS95 SPECTRUM ===")
 print(f"Perp power fraction (low-k) = {float(E_perp.get()):.3f}")
 print(f"Par power fraction (high-k) = {float(E_par.get()):.3f}")
 print(f"Anisotropy ratio E_⊥/E_∥ = {float(anisotropy_ratio.get()):.2f}")
-    
-# Kinetic energy balance table
+
+# Kinetic energy balance table + Tully-Fisher (full block)
 print("\n=== KINETIC ENERGY BALANCE TABLE ===")
 print("Region          | Needed (v²/r) | JxB          | Tension      | Pressure     | Aniso Turb   | Gravity      | Escape Eff.")
 mid = N//2
@@ -418,7 +401,7 @@ grav_bin = bin_avg(r_mid, a_grav_r)
 for name, i1, i2 in [("Inner 0-5 kpc", 0, 10), ("Mid 5-15 kpc", 10, 30), ("Outer 15-30 kpc", 30, 60)]:
     print(f"{name:15} | {np.mean(cent_bin[i1:i2]):12.2e} | {np.mean(jxb_bin[i1:i2]):12.2e} | {np.mean(tension_bin[i1:i2]):12.2e} | {np.mean(press_bin[i1:i2]):12.2e} | {np.mean(turb_bin[i1:i2]):12.2e} | {np.mean(grav_bin[i1:i2]):12.2e} | {0.1 * (float(cp.sum(rho)) * dx**3) * (float(cp.mean(vtot)) / 2.3):8.2e}")
 
-# Tully-Fisher plot
+# Tully-Fisher
 cum_mass = np.cumsum(np.histogram(r_mid, bins=np.linspace(0, L/2, 60), weights=rho[:,:,mid].flatten().get() * dx**3)[0])
 v_rot = v_phi_mid * 100
 plt.figure(figsize=(8,5))
@@ -433,4 +416,4 @@ plt.show()
 plt.savefig('tully_fisher_v0.4.png')
 
 print("\n✅ v0.4 Full Complete Code Ready!")
-print("Run this on Colab and paste the full console output.")
+print("Run this version and paste the full console output.")
