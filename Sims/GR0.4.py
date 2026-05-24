@@ -2,7 +2,7 @@ import cupy as cp
 import numpy as np
 import matplotlib.pyplot as plt
 
-print("🌌 ALADIN Plasma Cosmology v0.4 — Fixed Staggered Seeding + Safe CT")
+print("🌌 ALADIN Plasma Cosmology v0.4 — Full HLLD + Safe CT + Diagnostics")
 
 # ====================== PARAMETERS ======================
 N = 256
@@ -32,7 +32,7 @@ def nfw_enclosed_mass(r):
     x = r / r_s + 1e-12
     return 4 * cp.pi * rho0_nfw * r_s**3 * (cp.log(1 + x) - x / (1 + x))
 
-# ====================== FIELDS (Staggered) ======================
+# ====================== FIELDS ======================
 Bx = cp.zeros((N+1, N, N), dtype=cp.float32)
 By = cp.zeros((N, N+1, N), dtype=cp.float32)
 Bz = cp.zeros((N, N, N+1), dtype=cp.float32)
@@ -45,15 +45,14 @@ mz = cp.zeros((N, N, N), dtype=cp.float32)
 E_total = cp.ones((N, N, N), dtype=cp.float32) * 1e-4
 u_cr = cp.ones((N, N, N), dtype=cp.float32) * 1e-5
 
-# ====================== SAFE STAGGERED SEEDING (Fixed) ======================
+# ====================== SAFE SEEDING ======================
 B0 = 5.0
 Bphi = 2.0
-
-# Use main grid and assign to staggered arrays (safe broadcast)
 r_cyl = cp.sqrt(X**2 + Y**2)
-Bx[1:,:,:] = -Bphi * (Y[1:,:,:] / (r_cyl[1:,:,:] + 1e-8))   # approximate for Bx faces
+
+Bx[1:,:,:] = -Bphi * (Y[1:,:,:] / (r_cyl[1:,:,:] + 1e-8))
 By[:,1:,:] =  Bphi * (X[:,1:,:] / (r_cyl[:,1:,:] + 1e-8))
-Bz[:,:,1:] = B0 * cp.exp(- (X[:,:,1:]**2 + Y[:,:,1:]**2 + Z[:,:,1:]**2) / 200.0)
+Bz[:,:,1:] = B0 * cp.exp(-(X[:,:,1:]**2 + Y[:,:,1:]**2 + Z[:,:,1:]**2) / 200.0)
 
 # ====================== EQUILIBRIUM INITIALIZATION ======================
 r_cyl = cp.sqrt(X**2 + Y**2)
@@ -88,7 +87,6 @@ mx = rho * vx
 my = rho * vy
 mz = rho * vz
 
-# Initial conservation
 mass0 = float(cp.sum(rho))
 E0 = float(cp.sum(E_total))
 Lz0 = float(cp.sum(rho * (X*vy - Y*vx)))
@@ -96,7 +94,7 @@ px0 = float(cp.sum(mx))
 py0 = float(cp.sum(my))
 pz0 = float(cp.sum(mz))
 
-# ====================== MUSCL & HLLD ======================
+# ====================== MUSCL ======================
 def minmod(a, b):
     return 0.5 * (cp.sign(a) + cp.sign(b)) * cp.minimum(cp.abs(a), cp.abs(b))
 
@@ -121,6 +119,7 @@ def muscl_reconstruct(U, axis):
         U_R = U[:,:,1:-1] + 0.5 * slope
     return U_L, U_R
 
+# ====================== FULL HLLD ======================
 def hlld_flux(rho_L, rho_R, mx_L, mx_R, my_L, my_R, mz_L, mz_R, E_L, E_R, Bx_L, Bx_R, By_L, By_R, Bz_L, Bz_R):
     B2_L = Bx_L**2 + By_L**2 + Bz_L**2
     B2_R = Bx_R**2 + By_R**2 + Bz_R**2
@@ -326,7 +325,7 @@ print(f"Angular momentum Lz : {Lz_drift:.6f}%")
 print(f"Linear momentum Px  : {px_drift:.6f}%")
 print(f"Linear momentum Py  : {py_drift:.6f}%")
 print(f"Linear momentum Pz  : {pz_drift:.6f}%")
-    
+
 # Energy breakdown
 kin = 0.5 * float(cp.sum(rho * vtot**2))
 therm = float(cp.sum(p_thermal / (gamma - 1)))
@@ -362,7 +361,7 @@ print(f"Perp power fraction (low-k) = {float(E_perp.get()):.3f}")
 print(f"Par power fraction (high-k) = {float(E_par.get()):.3f}")
 print(f"Anisotropy ratio E_⊥/E_∥ = {float(anisotropy_ratio.get()):.2f}")
 
-# Kinetic energy balance table + Tully-Fisher (full block)
+# Kinetic energy balance table
 print("\n=== KINETIC ENERGY BALANCE TABLE ===")
 print("Region          | Needed (v²/r) | JxB          | Tension      | Pressure     | Aniso Turb   | Gravity      | Escape Eff.")
 mid = N//2
@@ -401,7 +400,7 @@ grav_bin = bin_avg(r_mid, a_grav_r)
 for name, i1, i2 in [("Inner 0-5 kpc", 0, 10), ("Mid 5-15 kpc", 10, 30), ("Outer 15-30 kpc", 30, 60)]:
     print(f"{name:15} | {np.mean(cent_bin[i1:i2]):12.2e} | {np.mean(jxb_bin[i1:i2]):12.2e} | {np.mean(tension_bin[i1:i2]):12.2e} | {np.mean(press_bin[i1:i2]):12.2e} | {np.mean(turb_bin[i1:i2]):12.2e} | {np.mean(grav_bin[i1:i2]):12.2e} | {0.1 * (float(cp.sum(rho)) * dx**3) * (float(cp.mean(vtot)) / 2.3):8.2e}")
 
-# Tully-Fisher
+# Tully-Fisher plot
 cum_mass = np.cumsum(np.histogram(r_mid, bins=np.linspace(0, L/2, 60), weights=rho[:,:,mid].flatten().get() * dx**3)[0])
 v_rot = v_phi_mid * 100
 plt.figure(figsize=(8,5))
@@ -416,4 +415,4 @@ plt.show()
 plt.savefig('tully_fisher_v0.4.png')
 
 print("\n✅ v0.4 Full Complete Code Ready!")
-print("Run this version and paste the full console output.")
+print("Run this and paste the full console output.")
