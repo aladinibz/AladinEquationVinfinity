@@ -1,0 +1,196 @@
+import cupy as cp
+import numpy as np
+import matplotlib.pyplot as plt
+
+print("🌌 ALADIN Plasma Cosmology v45.0 — STABLE (Energy + Velocity Clamp)")
+
+# ====================== PARAMETERS ======================
+N = 64
+L = 60.0
+dx = L / N
+x = y = z = cp.linspace(-L/2, L/2, N, dtype=cp.float32)
+X, Y, Z = cp.meshgrid(x, y, z, indexing='ij')
+
+G = 4.302e-3
+gamma = 5.0 / 3.0
+CFL = 0.10
+steps = 400
+rho_floor = 1e-5
+p_floor = 1e-6
+v_max_cap = 8.0   # velocity clamp
+
+v_phi_factor = 0.08
+c_h_factor = 10.0
+kappa_factor = 18.0
+
+# ====================== NFW ======================
+M_vir = 1.2e12
+c_nfw = 12.0
+r_s = 20.0
+rho0_nfw = M_vir / (4 * cp.pi * r_s**3 * (cp.log(1 + c_nfw) - c_nfw / (1 + c_nfw)))
+
+def nfw_enclosed_mass(r):
+    xx = r / r_s + 1e-12
+    return 4 * cp.pi * rho0_nfw * r_s**3 * (cp.log(1 + xx) - xx / (1 + xx))
+
+# ====================== KERNEL ======================
+kernel_code = r'''
+extern "C" __global__
+void ct_emf_kernel(float* vx, float* vy, float* vz,
+                   float* Bx, float* By, float* Bz,
+                   float dt, float dx, int N)
+{
+    int tx = threadIdx.x; int ty = threadIdx.y; int tz = threadIdx.z;
+    int i = blockIdx.x * blockDim.x + tx;
+    int j = blockIdx.y * blockDim.y + ty;
+    int k = blockIdx.z * blockDim.z + tz;
+
+    if (i < N-1 && j < N-1 && k < N-1) {
+        float vx_avg = 0.25f * (vx[(i*N+j)*N+k] + vx[(i*N+j+1)*N+k] + vx[(i*N+j)*N+k+1] + vx[(i*N+j+1)*N+k+1]);
+        float vy_avg = 0.25f * (vy[(i*N+j)*N+k] + vy[(i*N+j+1)*N+k] + vy[(i*N+j)*N+k+1] + vy[(i*N+j+1)*N+k+1]);
+        float Bx_avg = 0.25f * (Bx[i*N+j] + Bx[(i+1)*N+j] + Bx[i*N+j+1] + Bx[(i+1)*N+j+1]);
+        float By_avg = 0.25f * (By[i*N+j] + By[(i+1)*N+j] + By[i*N+j+1] + By[(i+1)*N+j+1]);
+
+        float sign_v = (vx_avg * vy_avg > 0.0f) ? 1.0f : -1.0f;
+        float Ez_val = - (vx_avg * By_avg - vy_avg * Bx_avg) * (1.0f + 0.05f * sign_v);
+
+        int bz_idx = (i * N + j) * (N + 1) + k;
+        Bz[bz_idx] += (dt / dx) * Ez_val;
+    }
+}
+'''
+
+kernel = cp.RawKernel(kernel_code, 'ct_emf_kernel')
+
+# ====================== FIELDS ======================
+rho = cp.ones((N, N, N), dtype=cp.float32) * 1e-3
+mx = cp.zeros((N, N, N), dtype=cp.float32)
+my = cp.zeros((N, N, N), dtype=cp.float32)
+mz = cp.zeros((N, N, N), dtype=cp.float32)
+E_total = cp.ones((N, N, N), dtype=cp.float32) * 1e-4
+
+Bx = cp.zeros((N+1, N, N), dtype=cp.float32)
+By = cp.zeros((N, N+1, N), dtype=cp.float32)
+Bz = cp.zeros((N, N, N+1), dtype=cp.float32)
+psi = cp.zeros((N, N, N), dtype=cp.float32)
+
+r_cyl = cp.sqrt(X**2 + Y**2)
+rho *= cp.exp(-r_cyl / 8.0) * cp.exp(-Z**2 / 2.25)
+
+r3d = cp.sqrt(X**2 + Y**2 + Z**2 + 1e-12)
+M_dm = nfw_enclosed_mass(r3d)
+g_r = -G * M_dm / r3d**2
+v_phi = v_phi_factor * cp.sqrt(cp.maximum(r_cyl * cp.abs(g_r), 0.0))
+
+vx = -v_phi * (Y / (r_cyl + 1e-8))
+vy =  v_phi * (X / (r_cyl + 1e-8))
+vz = cp.zeros_like(vx)
+
+mx = rho * vx
+my = rho * vy
+mz = rho * vz
+
+B0 = 0.8
+Bphi = 0.5
+Bx[1:,:,:] = -Bphi * (Y[0:N,:,:] / (r_cyl[0:N,:,:] + 1e-8))
+By[:,1:,:] =  Bphi * (X[:,0:N,:] / (r_cyl[:,0:N,:] + 1e-8))
+Bz[:,:,1:] = B0 * cp.exp(-(X[:,:,0:N]**2 + Y[:,:,0:N]**2 + Z[:,:,0:N]**2) / 300.0)
+
+c_h = c_h_factor * 100.0
+kappa = kappa_factor / dx
+
+def cell_center_B():
+    Bx_c = 0.5 * (Bx[1:,:,:] + Bx[:-1,:,:])
+    By_c = 0.5 * (By[:,1:,:] + By[:,:-1,:])
+    Bz_c = 0.5 * (Bz[:,:,1:] + Bz[:,:,:-1])
+    return Bx_c, By_c, Bz_c
+
+def compute_divB():
+    div = cp.zeros((N, N, N), dtype=cp.float32)
+    div += (Bx[1:,:,:] - Bx[:-1,:,:]) / dx
+    div += (By[:,1:,:] - By[:,:-1,:]) / dx
+    div += (Bz[:,:,1:] - Bz[:,:,:-1]) / dx
+    return div
+
+def compute_JxB():
+    Bx_c, By_c, Bz_c = cell_center_B()
+    Jx = (cp.roll(Bz_c, -1, axis=1) - cp.roll(Bz_c, 1, axis=1)) / (2*dx) - (cp.roll(By_c, -1, axis=2) - cp.roll(By_c, 1, axis=2)) / (2*dx)
+    Jy = (cp.roll(Bx_c, -1, axis=2) - cp.roll(Bx_c, 1, axis=2)) / (2*dx) - (cp.roll(Bz_c, -1, axis=0) - cp.roll(Bz_c, 1, axis=0)) / (2*dx)
+    Jz = (cp.roll(By_c, -1, axis=0) - cp.roll(By_c, 1, axis=0)) / (2*dx) - (cp.roll(Bx_c, -1, axis=1) - cp.roll(Bx_c, 1, axis=1)) / (2*dx)
+    fx = Jy * Bz_c - Jz * By_c
+    fy = Jz * Bx_c - Jx * Bz_c
+    fz = Jx * By_c - Jy * Bx_c
+    return fx, fy, fz
+
+def compute_pressure_gradient(p):
+    px = (cp.roll(p, -1, axis=0) - cp.roll(p, 1, axis=0)) / (2*dx)
+    py = (cp.roll(p, -1, axis=1) - cp.roll(p, 1, axis=1)) / (2*dx)
+    pz = (cp.roll(p, -1, axis=2) - cp.roll(p, 1, axis=2)) / (2*dx)
+    return px, py, pz
+
+print("Starting v45.0 — Stabilized with Energy & Velocity Protection...")
+
+block = (8, 8, 8)
+grid = ((N + 7)//8, (N + 7)//8, (N + 7)//8)
+
+for step in range(steps):
+    dt = CFL * dx / 250.0
+
+    kernel(grid, block, (vx, vy, vz, Bx, By, Bz, dt, dx, N), shared_mem=6*1000*4)
+
+    # Dedner
+    divB = compute_divB()
+    psi -= dt * c_h**2 * divB - dt * kappa * psi
+    psi_x = (psi[1:,:,:] - psi[:-1,:,:]) / dx
+    psi_y = (psi[:,1:,:] - psi[:,:-1,:]) / dx
+    psi_z = (psi[:,:,1:] - psi[:,:,:-1]) / dx
+    Bx[1:-1,:,:] -= dt * psi_x
+    By[:,1:-1,:] -= dt * psi_y
+    Bz[:,:,1:-1] -= dt * psi_z
+
+    # Cell-centered fields
+    Bx_c, By_c, Bz_c = cell_center_B()
+
+    # Energy consistency + floors
+    E_kin = 0.5 * rho * (vx**2 + vy**2 + vz**2)
+    E_mag = 0.5 * (Bx_c**2 + By_c**2 + Bz_c**2)
+    E_total = cp.maximum(E_total, E_kin + E_mag + 1e-6)
+
+    p_thermal = cp.maximum((gamma - 1.0) * (E_total - E_kin - E_mag), p_floor)
+
+    # Forces
+    px, py, pz = compute_pressure_gradient(p_thermal)
+    Jx, Jy, Jz = compute_JxB()
+
+    mx += dt * (px + Jx)
+    my += dt * (py + Jy)
+    mz += dt * (pz + Jz)
+
+    # Update with safety
+    rho = cp.maximum(rho, rho_floor)
+    vx = mx / rho
+    vy = my / rho
+    vz = mz / rho
+
+    # Velocity clamp
+    v = cp.sqrt(vx**2 + vy**2 + vz**2)
+    scale = cp.minimum(1.0, v_max_cap / (v + 1e-12))
+    vx *= scale
+    vy *= scale
+    vz *= scale
+
+    # Final safety
+    vx = cp.nan_to_num(vx, nan=0.0, posinf=v_max_cap, neginf=-v_max_cap)
+    vy = cp.nan_to_num(vy, nan=0.0, posinf=v_max_cap, neginf=-v_max_cap)
+    vz = cp.nan_to_num(vz, nan=0.0, posinf=v_max_cap, neginf=-v_max_cap)
+
+    if step % 50 == 0:
+        div_max = float(cp.max(cp.abs(compute_divB())))
+        vmax = float(cp.max(cp.sqrt(vx**2 + vy**2 + vz**2)))
+        Bmag = cp.sqrt(Bx_c**2 + By_c**2 + Bz_c**2)
+        Bmax = float(cp.nanmax(Bmag))
+        print(f"Step {step:4d} | Bmax = {Bmax:.2f} μG | vmax = {vmax:.1f} km/s | divB_max = {div_max:.2e}")
+
+print("\n✅ v45.0 Stabilized Version Finished!")
+Jx_final, Jy_final, Jz_final = compute_JxB()
+print(f"Final avg |J×B| = {float(cp.mean(cp.sqrt(Jx_final**2 + Jy_final**2 + Jz_final**2))):.2e}")
