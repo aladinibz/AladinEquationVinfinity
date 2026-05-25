@@ -2,7 +2,7 @@ import cupy as cp
 import numpy as np
 import matplotlib.pyplot as plt
 
-print("🌌 ALADIN Plasma Cosmology v40.9 — FIXED DEDNER + STAGGERED J×B")
+print("🌌 ALADIN Plasma Cosmology v41.2 — FIXED SHAPES + PRESSURE + J×B")
 
 # ====================== PARAMETERS ======================
 N = 64
@@ -15,7 +15,7 @@ G = 4.302e-3
 gamma = 5.0 / 3.0
 CFL = 0.15
 steps = 400
-mu0 = 1.0
+p_floor = 1e-4
 
 v_phi_factor = 0.12
 c_h_factor = 12.0
@@ -31,7 +31,7 @@ def nfw_enclosed_mass(r):
     xx = r / r_s + 1e-12
     return 4 * cp.pi * rho0_nfw * r_s**3 * (cp.log(1 + xx) - xx / (1 + xx))
 
-# ====================== FUSED KERNEL ======================
+# ====================== KERNEL ======================
 kernel_code = r'''
 extern "C" __global__
 void ct_yee_kernel(float* vx, float* vy, float* vz,
@@ -69,14 +69,14 @@ void ct_yee_kernel(float* vx, float* vy, float* vz,
 
     if (i < N-1 && j < N-1 && k < N-1) {
         int s = (tx+1)*tys*tzs + (ty+1)*tzs + (tz+1);
-        float vx_avg = 0.25f * (s_vx[s] + s_vx[s+tys*tzs] + s_vx[s+tzs] + s_vx[s+tys*tzs+tzs]);
-        float vy_avg = 0.25f * (s_vy[s] + s_vy[s+tys*tzs] + s_vy[s+tzs] + s_vy[s+tys*tzs+tzs]);
-        float Bx_avg = 0.25f * (s_Bx[s] + s_Bx[s+tys*tzs] + s_Bx[s+tzs] + s_Bx[s+tys*tzs+tzs]);
-        float By_avg = 0.25f * (s_By[s] + s_By[s+tys*tzs] + s_By[s+tzs] + s_By[s+tys*tzs+tzs]);
+        float vx_avg = 0.25f * (s_vx[s] + s_vx[s + tys*tzs] + s_vx[s + tzs] + s_vx[s + tys*tzs + tzs]);
+        float vy_avg = 0.25f * (s_vy[s] + s_vy[s + tys*tzs] + s_vy[s + tzs] + s_vy[s + tys*tzs + tzs]);
+        float Bx_avg = 0.25f * (s_Bx[s] + s_Bx[s + tys*tzs] + s_Bx[s + tzs] + s_Bx[s + tys*tzs + tzs]);
+        float By_avg = 0.25f * (s_By[s] + s_By[s + tys*tzs] + s_By[s + tzs] + s_By[s + tys*tzs + tzs]);
 
         float Ez_val = 0.04f * (-(vx_avg * By_avg - vy_avg * Bx_avg));
 
-        int bz_idx = (i*N + j)*(N+1) + k;
+        int bz_idx = (i * N + j) * (N + 1) + k;
         Bz[bz_idx] += (dt / dx) * Ez_val;
     }
 }
@@ -129,25 +129,32 @@ def compute_divB():
     return div
 
 def compute_staggered_JxB():
-    Jx = (By[:,1:,:] - By[:,:-1,:]) / dx - (Bz[1:,:,:] - Bz[:-1,:,:]) / dx
-    Jy = (Bz[:,:,1:] - Bz[:,:,:-1]) / dx - (Bx[1:,:,:] - Bx[:-1,:,:]) / dx
-    Jz = (Bx[:,1:,:] - Bx[:,:-1,:]) / dx - (By[1:,:,:] - By[:-1,:,:]) / dx
-
-    # Safe cell-centered
-    Jx_c = 0.5 * (Jx[:,:-1,:-1] + Jx[:,1:,:-1])
-    Jy_c = 0.5 * (Jy[:-1,:,:-1] + Jy[1:,:,:-1])
-    Jz_c = 0.5 * (Jz[:-1,:-1,:] + Jz[:-1,1:,:])
-
+    # Cell-centered B (safe)
     Bx_c = 0.5 * (Bx[1:,:,:] + Bx[:-1,:,:])
     By_c = 0.5 * (By[:,1:,:] + By[:,:-1,:])
     Bz_c = 0.5 * (Bz[:,:,1:] + Bz[:,:,:-1])
 
-    fx = Jy_c * Bz_c - Jz_c * By_c
-    fy = Jz_c * Bx_c - Jx_c * Bz_c
-    fz = Jx_c * By_c - Jy_c * Bx_c
+    # Curl using roll (shape-safe)
+    Jx = (cp.roll(Bz_c, -1, axis=1) - cp.roll(Bz_c, 1, axis=1)) / (2 * dx) - \
+         (cp.roll(By_c, -1, axis=2) - cp.roll(By_c, 1, axis=2)) / (2 * dx)
+    Jy = (cp.roll(Bx_c, -1, axis=2) - cp.roll(Bx_c, 1, axis=2)) / (2 * dx) - \
+         (cp.roll(Bz_c, -1, axis=0) - cp.roll(Bz_c, 1, axis=0)) / (2 * dx)
+    Jz = (cp.roll(By_c, -1, axis=0) - cp.roll(By_c, 1, axis=0)) / (2 * dx) - \
+         (cp.roll(Bx_c, -1, axis=1) - cp.roll(Bx_c, 1, axis=1)) / (2 * dx)
+
+    # J × B
+    fx = Jy * Bz_c - Jz * By_c
+    fy = Jz * Bx_c - Jx * Bz_c
+    fz = Jx * By_c - Jy * Bx_c
     return fx, fy, fz
 
-print("Starting v40.9 with Fixed Dedner + Staggered J×B...")
+def compute_pressure_gradient(p):
+    px = (p[1:,:,:] - p[:-1,:,:]) / dx
+    py = (p[:,1:,:] - p[:,:-1,:]) / dx
+    pz = (p[:,:,1:] - p[:,:,:-1]) / dx
+    return -px, -py, -pz
+
+print("Starting v41.2 with Fixed J×B + Pressure Gradient...")
 
 block = (8, 8, 8)
 grid = ((N + 7)//8, (N + 7)//8, (N + 7)//8)
@@ -158,23 +165,33 @@ for step in range(steps):
     
     kernel(grid, block, (vx, vy, vz, Bx, By, Bz, dt, dx, N), shared_mem=shared_bytes)
 
-    # === FIXED DEDNER (direct gradient) ===
+    # Dedner
     divB = compute_divB()
     psi -= dt * c_h**2 * divB - dt * kappa * psi
-
     psi_x = (psi[1:,:,:] - psi[:-1,:,:]) / dx
     psi_y = (psi[:,1:,:] - psi[:,:-1,:]) / dx
     psi_z = (psi[:,:,1:] - psi[:,:,:-1]) / dx
-
     Bx[1:-1,:,:] -= dt * psi_x
     By[:,1:-1,:] -= dt * psi_y
     Bz[:,:,1:-1] -= dt * psi_z
 
-    # === STAGGERED J×B ===
+    # Pressure gradient
+    p_thermal = cp.maximum((gamma - 1.0) * (E_total - 0.5*rho*(vx**2 + vy**2 + vz**2) - 0.5*(0.25*(Bx[1:,:,:]**2 + Bx[:-1,:,:]**2) + 0.25*(By[:,1:,:]**2 + By[:,:-1,:]**2) + 0.25*(Bz[:,:,1:]**2 + Bz[:,:,:-1]**2))), p_floor)
+    px, py, pz = compute_pressure_gradient(p_thermal)
+    mx += dt * px
+    my += dt * py
+    mz += dt * pz
+
+    # J×B
     Jx, Jy, Jz = compute_staggered_JxB()
     mx += dt * Jx
     my += dt * Jy
     mz += dt * Jz
+
+    # Update velocity
+    vx = mx / rho
+    vy = my / rho
+    vz = mz / rho
 
     if step % 50 == 0:
         div_max = float(cp.max(cp.abs(compute_divB())))
@@ -186,10 +203,8 @@ for step in range(steps):
         Bmag = cp.sqrt(Bx_c**2 + By_c**2 + Bz_c**2)
         Bmax = float(cp.nanmax(Bmag))
         
-        print(f"Step {step:4d} | Bmax = {Bmax:.2f} μG | vmax = {vmax:.1f} km/s | divB_max = {div_max:.2e} | JxB active")
+        print(f"Step {step:4d} | Bmax = {Bmax:.2f} μG | vmax = {vmax:.1f} km/s | divB_max = {div_max:.2e}")
 
-print("\n✅ v40.9 Finished! J×B is now in action.")
-
-# Quick JxB magnitude print at end
+print("\n✅ v41.2 Finished with Fixed J×B + Pressure!")
 Jx_final, Jy_final, Jz_final = compute_staggered_JxB()
-print(f"Final avg |J×B| ≈ {float(cp.mean(cp.sqrt(Jx_final**2 + Jy_final**2 + Jz_final**2))):.2e}")
+print(f"Final avg |J×B| = {float(cp.mean(cp.sqrt(Jx_final**2 + Jy_final**2 + Jz_final**2))):.2e}")
