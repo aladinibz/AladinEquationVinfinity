@@ -19,7 +19,7 @@ steps = 400
 
 rho_floor = 1e-6
 p_floor = 1e-4
-v_phi_factor = 0.12   # <--- Fixed and defined here
+v_phi_factor = 0.12
 
 # ====================== NFW ======================
 M_vir = 1.2e12
@@ -31,7 +31,7 @@ def nfw_enclosed_mass(r):
     xx = r / r_s + 1e-12
     return 4 * cp.pi * rho0_nfw * r_s**3 * (cp.log(1 + xx) - xx / (1 + xx))
 
-# ====================== OPTIMIZED KERNEL ======================
+# ====================== KERNEL DEFINITION ======================
 kernel_code = r'''
 extern "C" __global__
 void ct_yee_optimized(float* vx, float* vy, float* vz,
@@ -84,11 +84,11 @@ void ct_yee_optimized(float* vx, float* vy, float* vz,
         Ez[ez_idx] = -(vx_avg * By_avg - vy_avg * Bx_avg);
     }
 }
-
-ct_kernel = cp.RawKernel(kernel_code, 'ct_yee_optimized')
 '''
 
-# ====================== FIELDS ======================
+ct_kernel = cp.RawKernel(kernel_code, 'ct_yee_optimized')
+
+# ====================== FIELDS & INITIAL CONDITIONS ======================
 rho = cp.ones((N, N, N), dtype=cp.float32) * 1e-3
 mx = cp.zeros((N, N, N), dtype=cp.float32)
 my = cp.zeros((N, N, N), dtype=cp.float32)
@@ -103,7 +103,6 @@ Ex = cp.zeros((N, N+1, N+1), dtype=cp.float32)
 Ey = cp.zeros((N+1, N, N+1), dtype=cp.float32)
 Ez = cp.zeros((N+1, N+1, N), dtype=cp.float32)
 
-# ====================== INITIAL CONDITIONS ======================
 r_cyl = cp.sqrt(X**2 + Y**2)
 rho *= cp.exp(-r_cyl / 8.0) * cp.exp(-Z**2 / 2.25)
 
