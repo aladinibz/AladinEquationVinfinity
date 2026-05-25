@@ -2,7 +2,7 @@ import cupy as cp
 import numpy as np
 import matplotlib.pyplot as plt
 
-print("🌌 ALADIN Plasma Cosmology v40.8 — STABLE TRUE CT-YEE + STAGGERED J×B")
+print("🌌 ALADIN Plasma Cosmology v40.9 — FIXED DEDNER + STAGGERED J×B")
 
 # ====================== PARAMETERS ======================
 N = 64
@@ -18,8 +18,8 @@ steps = 400
 mu0 = 1.0
 
 v_phi_factor = 0.12
-c_h_factor = 10.0
-kappa_factor = 12.0
+c_h_factor = 12.0
+kappa_factor = 15.0
 
 # ====================== NFW ======================
 M_vir = 1.2e12
@@ -35,11 +35,10 @@ def nfw_enclosed_mass(r):
 kernel_code = r'''
 extern "C" __global__
 void ct_yee_kernel(float* vx, float* vy, float* vz,
-                   float* Bx, float* By, float* Bz, float* psi,
+                   float* Bx, float* By, float* Bz,
                    float dt, float dx, int N)
 {
     extern __shared__ float sdata[];
-
     int tx = threadIdx.x; int ty = threadIdx.y; int tz = threadIdx.z;
     int i = blockIdx.x * blockDim.x + tx;
     int j = blockIdx.y * blockDim.y + ty;
@@ -70,13 +69,12 @@ void ct_yee_kernel(float* vx, float* vy, float* vz,
 
     if (i < N-1 && j < N-1 && k < N-1) {
         int s = (tx+1)*tys*tzs + (ty+1)*tzs + (tz+1);
-
         float vx_avg = 0.25f * (s_vx[s] + s_vx[s+tys*tzs] + s_vx[s+tzs] + s_vx[s+tys*tzs+tzs]);
         float vy_avg = 0.25f * (s_vy[s] + s_vy[s+tys*tzs] + s_vy[s+tzs] + s_vy[s+tys*tzs+tzs]);
         float Bx_avg = 0.25f * (s_Bx[s] + s_Bx[s+tys*tzs] + s_Bx[s+tzs] + s_Bx[s+tys*tzs+tzs]);
         float By_avg = 0.25f * (s_By[s] + s_By[s+tys*tzs] + s_By[s+tzs] + s_By[s+tys*tzs+tzs]);
 
-        float Ez_val = 0.05f * (-(vx_avg * By_avg - vy_avg * Bx_avg));
+        float Ez_val = 0.04f * (-(vx_avg * By_avg - vy_avg * Bx_avg));
 
         int bz_idx = (i*N + j)*(N+1) + k;
         Bz[bz_idx] += (dt / dx) * Ez_val;
@@ -86,7 +84,7 @@ void ct_yee_kernel(float* vx, float* vy, float* vz,
 
 kernel = cp.RawKernel(kernel_code, 'ct_yee_kernel')
 
-# ====================== FIELDS & INIT ======================
+# ====================== FIELDS ======================
 rho = cp.ones((N, N, N), dtype=cp.float32) * 1e-3
 mx = cp.zeros((N, N, N), dtype=cp.float32)
 my = cp.zeros((N, N, N), dtype=cp.float32)
@@ -114,13 +112,13 @@ mx = rho * vx
 my = rho * vy
 mz = rho * vz
 
-B0 = 2.0
-Bphi = 1.0
+B0 = 1.5
+Bphi = 0.8
 Bx[1:,:,:] = -Bphi * (Y[0:N,:,:] / (r_cyl[0:N,:,:] + 1e-8))
 By[:,1:,:] =  Bphi * (X[:,0:N,:] / (r_cyl[:,0:N,:] + 1e-8))
-Bz[:,:,1:] = B0 * cp.exp(-(X[:,:,0:N]**2 + Y[:,:,0:N]**2 + Z[:,:,0:N]**2) / 300.0)
+Bz[:,:,1:] = B0 * cp.exp(-(X[:,:,0:N]**2 + Y[:,:,0:N]**2 + Z[:,:,0:N]**2) / 250.0)
 
-c_h = c_h_factor * 150.0
+c_h = c_h_factor * 120.0
 kappa = kappa_factor / dx
 
 def compute_divB():
@@ -131,24 +129,25 @@ def compute_divB():
     return div
 
 def compute_staggered_JxB():
-    """ Safe staggered J = ∇ × B, then J × B """
     Jx = (By[:,1:,:] - By[:,:-1,:]) / dx - (Bz[1:,:,:] - Bz[:-1,:,:]) / dx
     Jy = (Bz[:,:,1:] - Bz[:,:,:-1]) / dx - (Bx[1:,:,:] - Bx[:-1,:,:]) / dx
     Jz = (Bx[:,1:,:] - Bx[:,:-1,:]) / dx - (By[1:,:,:] - By[:-1,:,:]) / dx
 
-    # Safe average to cell center
+    # Safe cell-centered
     Jx_c = 0.5 * (Jx[:,:-1,:-1] + Jx[:,1:,:-1])
     Jy_c = 0.5 * (Jy[:-1,:,:-1] + Jy[1:,:,:-1])
     Jz_c = 0.5 * (Jz[:-1,:-1,:] + Jz[:-1,1:,:])
 
-    # J × B force
-    fx = Jy_c * Bz_c.mean() - Jz_c * By_c.mean()
-    fy = Jz_c * Bx_c.mean() - Jx_c * Bz_c.mean()
-    fz = Jx_c * By_c.mean() - Jy_c * Bx_c.mean()
+    Bx_c = 0.5 * (Bx[1:,:,:] + Bx[:-1,:,:])
+    By_c = 0.5 * (By[:,1:,:] + By[:,:-1,:])
+    Bz_c = 0.5 * (Bz[:,:,1:] + Bz[:,:,:-1])
 
+    fx = Jy_c * Bz_c - Jz_c * By_c
+    fy = Jz_c * Bx_c - Jx_c * Bz_c
+    fz = Jx_c * By_c - Jy_c * Bx_c
     return fx, fy, fz
 
-print("Starting v40.8 with Fixed True CT-Yee + Staggered J×B...")
+print("Starting v40.9 with Fixed Dedner + Staggered J×B...")
 
 block = (8, 8, 8)
 grid = ((N + 7)//8, (N + 7)//8, (N + 7)//8)
@@ -156,21 +155,22 @@ shared_bytes = 6 * (10**3) * 4
 
 for step in range(steps):
     dt = CFL * dx / 280.0
-    kernel(grid, block, (vx, vy, vz, Bx, By, Bz, psi, dt, dx, N, c_h, kappa), shared_mem=shared_bytes)
+    
+    kernel(grid, block, (vx, vy, vz, Bx, By, Bz, dt, dx, N), shared_mem=shared_bytes)
 
-    # Full staggered Dedner
+    # === FIXED DEDNER (direct gradient) ===
     divB = compute_divB()
-    psi = psi - dt * c_h**2 * divB - dt * kappa * psi
+    psi -= dt * c_h**2 * divB - dt * kappa * psi
 
-    psi_x = 0.5 * (psi[1:,:,:] + psi[:-1,:,:])
-    psi_y = 0.5 * (psi[:,1:,:] + psi[:,:-1,:])
-    psi_z = 0.5 * (psi[:,:,1:] + psi[:,:,:-1])
+    psi_x = (psi[1:,:,:] - psi[:-1,:,:]) / dx
+    psi_y = (psi[:,1:,:] - psi[:,:-1,:]) / dx
+    psi_z = (psi[:,:,1:] - psi[:,:,:-1]) / dx
 
-    Bx[1:-1,:,:] -= dt * (psi_x[1:,:,:] - psi_x[:-1,:,:]) / dx
-    By[:,1:-1,:] -= dt * (psi_y[:,1:,:] - psi_y[:,:-1,:]) / dx
-    Bz[:,:,1:-1] -= dt * (psi_z[:,:,1:] - psi_z[:,:,:-1]) / dx
+    Bx[1:-1,:,:] -= dt * psi_x
+    By[:,1:-1,:] -= dt * psi_y
+    Bz[:,:,1:-1] -= dt * psi_z
 
-    # Staggered J×B
+    # === STAGGERED J×B ===
     Jx, Jy, Jz = compute_staggered_JxB()
     mx += dt * Jx
     my += dt * Jy
@@ -186,6 +186,10 @@ for step in range(steps):
         Bmag = cp.sqrt(Bx_c**2 + By_c**2 + Bz_c**2)
         Bmax = float(cp.nanmax(Bmag))
         
-        print(f"Step {step:4d} | Bmax = {Bmax:.2f} μG | vmax = {vmax:.1f} km/s | divB_max = {div_max:.2e}")
+        print(f"Step {step:4d} | Bmax = {Bmax:.2f} μG | vmax = {vmax:.1f} km/s | divB_max = {div_max:.2e} | JxB active")
 
-print("\n✅ v40.8 Finished with Fixed True CT-Yee + Staggered J×B!")
+print("\n✅ v40.9 Finished! J×B is now in action.")
+
+# Quick JxB magnitude print at end
+Jx_final, Jy_final, Jz_final = compute_staggered_JxB()
+print(f"Final avg |J×B| ≈ {float(cp.mean(cp.sqrt(Jx_final**2 + Jy_final**2 + Jz_final**2))):.2e}")
