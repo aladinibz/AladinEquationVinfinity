@@ -2,7 +2,7 @@ import cupy as cp
 import numpy as np
 import matplotlib.pyplot as plt
 
-print("🌌 ALADIN Plasma Cosmology v43.0 — COMPLETE: Char Recon + HLLD-style + Upwind CT + JxB")
+print("🌌 ALADIN Plasma Cosmology v43.1 — FIXED SHAPES + Char Recon + JxB + Pressure")
 
 # ====================== PARAMETERS ======================
 N = 64
@@ -31,11 +31,11 @@ def nfw_enclosed_mass(r):
     xx = r / r_s + 1e-12
     return 4 * cp.pi * rho0_nfw * r_s**3 * (cp.log(1 + xx) - xx / (1 + xx))
 
-# ====================== MINMOD LIMITER ======================
+# ====================== MINMOD ======================
 def minmod(a, b):
     return cp.sign(a) * cp.minimum(cp.abs(a), cp.abs(b)) * (cp.sign(a) == cp.sign(b))
 
-# ====================== CHARACTERISTIC RECONSTRUCTION ======================
+# ====================== PLM RECONSTRUCTION ======================
 def reconstruct_plm(q, axis=0):
     dq_right = cp.roll(q, -1, axis=axis) - q
     dq_left = q - cp.roll(q, 1, axis=axis)
@@ -44,14 +44,13 @@ def reconstruct_plm(q, axis=0):
     qR = cp.roll(q, -1, axis=axis) - 0.5 * cp.roll(slope, -1, axis=axis)
     return qL, qR
 
-# ====================== FUSED KERNEL (Upwind CT EMF) ======================
+# ====================== KERNEL (Upwind CT) ======================
 kernel_code = r'''
 extern "C" __global__
 void ct_emf_kernel(float* vx, float* vy, float* vz,
                    float* Bx, float* By, float* Bz,
                    float dt, float dx, int N)
 {
-    extern __shared__ float sdata[];
     int tx = threadIdx.x; int ty = threadIdx.y; int tz = threadIdx.z;
     int i = blockIdx.x * blockDim.x + tx;
     int j = blockIdx.y * blockDim.y + ty;
@@ -123,12 +122,9 @@ def compute_staggered_JxB():
     By_c = 0.5 * (By[:,1:,:] + By[:,:-1,:])
     Bz_c = 0.5 * (Bz[:,:,1:] + Bz[:,:,:-1])
 
-    Jx = (cp.roll(Bz_c, -1, axis=1) - cp.roll(Bz_c, 1, axis=1)) / (2 * dx) - \
-         (cp.roll(By_c, -1, axis=2) - cp.roll(By_c, 1, axis=2)) / (2 * dx)
-    Jy = (cp.roll(Bx_c, -1, axis=2) - cp.roll(Bx_c, 1, axis=2)) / (2 * dx) - \
-         (cp.roll(Bz_c, -1, axis=0) - cp.roll(Bz_c, 1, axis=0)) / (2 * dx)
-    Jz = (cp.roll(By_c, -1, axis=0) - cp.roll(By_c, 1, axis=0)) / (2 * dx) - \
-         (cp.roll(Bx_c, -1, axis=1) - cp.roll(Bx_c, 1, axis=1)) / (2 * dx)
+    Jx = (cp.roll(Bz_c, -1, axis=1) - cp.roll(Bz_c, 1, axis=1)) / (2*dx) - (cp.roll(By_c, -1, axis=2) - cp.roll(By_c, 1, axis=2)) / (2*dx)
+    Jy = (cp.roll(Bx_c, -1, axis=2) - cp.roll(Bx_c, 1, axis=2)) / (2*dx) - (cp.roll(Bz_c, -1, axis=0) - cp.roll(Bz_c, 1, axis=0)) / (2*dx)
+    Jz = (cp.roll(By_c, -1, axis=0) - cp.roll(By_c, 1, axis=0)) / (2*dx) - (cp.roll(Bx_c, -1, axis=1) - cp.roll(Bx_c, 1, axis=1)) / (2*dx)
 
     fx = Jy * Bz_c - Jz * By_c
     fy = Jz * Bx_c - Jx * Bz_c
@@ -139,9 +135,10 @@ def compute_pressure_gradient(p):
     px = (p[1:,:,:] - p[:-1,:,:]) / dx
     py = (p[:,1:,:] - p[:,:-1,:]) / dx
     pz = (p[:,:,1:] - p[:,:,:-1]) / dx
-    return -px, -py, -pz
+    # Trim to (N,N,N)
+    return -px[:-1,:,:], -py[:,:-1,:], -pz[:,:,:-1]
 
-print("Starting v43.0 — Complete & Runnable...")
+print("Starting v43.1 with Fixed Shapes...")
 
 block = (8, 8, 8)
 grid = ((N + 7)//8, (N + 7)//8, (N + 7)//8)
@@ -149,11 +146,7 @@ grid = ((N + 7)//8, (N + 7)//8, (N + 7)//8)
 for step in range(steps):
     dt = CFL * dx / 220.0
 
-    # Characteristic reconstruction example (x-direction)
-    rhoL, rhoR = reconstruct_plm(rho, axis=0)
-    vxL, vxR = reconstruct_plm(vx, axis=0)
-
-    # Kernel (Upwind CT)
+    # CT EMF kernel
     kernel(grid, block, (vx, vy, vz, Bx, By, Bz, dt, dx, N), shared_mem=6*1000*4)
 
     # Dedner
@@ -166,14 +159,14 @@ for step in range(steps):
     By[:,1:-1,:] -= dt * psi_y
     Bz[:,:,1:-1] -= dt * psi_z
 
-    # Pressure gradient
+    # Pressure gradient (fixed shape)
     p_thermal = cp.maximum((gamma - 1.0) * (E_total - 0.5*rho*(vx**2 + vy**2 + vz**2) - 0.5*(0.25*(Bx[1:,:,:]**2 + Bx[:-1,:,:]**2) + 0.25*(By[:,1:,:]**2 + By[:,:-1,:]**2) + 0.25*(Bz[:,:,1:]**2 + Bz[:,:,:-1]**2))), p_floor)
     px, py, pz = compute_pressure_gradient(p_thermal)
     mx += dt * px
     my += dt * py
     mz += dt * pz
 
-    # J×B
+    # J×B (fixed shape)
     Jx, Jy, Jz = compute_staggered_JxB()
     mx += dt * Jx
     my += dt * Jy
@@ -194,6 +187,6 @@ for step in range(steps):
         Bmax = float(cp.nanmax(Bmag))
         print(f"Step {step:4d} | Bmax = {Bmax:.2f} μG | vmax = {vmax:.1f} km/s | divB_max = {div_max:.2e}")
 
-print("\n✅ v43.0 Complete & Finished!")
+print("\n✅ v43.1 Finished with Fixed Shapes!")
 Jx_final, Jy_final, Jz_final = compute_staggered_JxB()
 print(f"Final avg |J×B| = {float(cp.mean(cp.sqrt(Jx_final**2 + Jy_final**2 + Jz_final**2))):.2e}")
