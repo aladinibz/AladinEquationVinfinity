@@ -2,7 +2,7 @@ import cupy as cp
 import numpy as np
 import matplotlib.pyplot as plt
 
-print("🌌 ALADIN Plasma Cosmology v34.0 — True Staggered CT Yee + Dedner")
+print("🌌 ALADIN Plasma Cosmology v34.0 — True Staggered CT Yee + Dedner (Fixed Seeding)")
 
 # ====================== PARAMETERS ======================
 N = 128
@@ -20,16 +20,6 @@ steps = 300
 rho_floor = 1e-6
 p_floor = 1e-4
 v_phi_factor = 0.12
-
-# NFW
-M_vir = 1.2e12
-c_nfw = 12.0
-r_s = 20.0
-rho0_nfw = M_vir / (4 * cp.pi * r_s**3 * (cp.log(1 + c_nfw) - c_nfw / (1 + c_nfw)))
-
-def nfw_enclosed_mass(r):
-    xx = r / r_s + 1e-12
-    return 4 * cp.pi * rho0_nfw * r_s**3 * (cp.log(1 + xx) - xx / (1 + xx))
 
 # ====================== FIELDS ======================
 rho = cp.ones((N, N, N), dtype=cp.float32) * 1e-3
@@ -52,7 +42,7 @@ r_cyl = cp.sqrt(X**2 + Y**2)
 rho *= cp.exp(-r_cyl / 8.0) * cp.exp(-Z**2 / 2.25)
 
 r3d = cp.sqrt(X**2 + Y**2 + Z**2 + 1e-12)
-M_dm = nfw_enclosed_mass(r3d)
+M_dm = nfw_enclosed_mass(r3d)   # define function below
 g_r = -G * M_dm / r3d**2
 v_phi = v_phi_factor * cp.sqrt(cp.maximum(r_cyl * cp.abs(g_r), 0.0))
 vx = -v_phi * (Y / (r_cyl + 1e-8))
@@ -67,25 +57,32 @@ mass0 = float(cp.sum(rho))
 E0 = float(cp.sum(E_total))
 Lz0 = float(cp.sum(rho * (X*vy - Y*vx)))
 
-# Staggered B seeding
+# ====================== NFW FUNCTION ======================
+def nfw_enclosed_mass(r):
+    xx = r / 20.0 + 1e-12
+    return 4 * cp.pi * rho0_nfw * 20.0**3 * (cp.log(1 + xx) - xx / (1 + xx))
+
+# ====================== STAGGERED B SEEDING (FIXED) ======================
 B0 = 5.0
 Bphi = 2.0
-Bx[1:-1,:,:] = -Bphi * (Y[1:-1,:,:] / (r_cyl[1:-1,:,:] + 1e-8))
-By[:,1:-1,:] = Bphi * (X[:,1:-1,:] / (r_cyl[:,1:-1,:] + 1e-8))
-Bz[:,:,1:] = B0 * cp.exp(-r_cyl[:,:,None]**2 / 200.0)
+
+# Correct seeding for staggered grids
+Bx[1:,:,:] = -Bphi * (Y[1:,:,:] / (r_cyl[1:,:,:] + 1e-8))   # use [1:] for N+1 size
+By[:,1:,:] =  Bphi * (X[:,1:,:] / (r_cyl[:,1:,:] + 1e-8))
+Bz[:,:,1:] = B0 * cp.exp(-(X[:,:,1:]**2 + Y[:,:,1:]**2 + Z[:,:,1:]**2) / 200.0)
 
 # ====================== MAIN LOOP ======================
 for step in range(steps):
     vx = mx / (rho + 1e-30)
     vy = my / (rho + 1e-30)
     vz = mz / (rho + 1e-30)
-    dt = 0.25 * dx / 150.0   # safe dt
+    dt = 0.25 * dx / 150.0
 
     # Compute Edge EMFs
     for i in range(N):
         for j in range(N):
             for k in range(N):
-                # Ex
+                # Ex at (i, j+0.5, k+0.5)
                 if j < N-1 and k < N-1:
                     vy_avg = 0.25 * (vy[i,j,k] + vy[i,j+1,k] + vy[i,j,k+1] + vy[i,j+1,k+1])
                     vz_avg = 0.25 * (vz[i,j,k] + vz[i,j+1,k] + vz[i,j,k+1] + vz[i,j+1,k+1])
@@ -93,7 +90,7 @@ for step in range(steps):
                     By_avg = 0.25 * (By[i,j,k] + By[i,j+1,k] + By[i,j,k+1] + By[i,j+1,k+1])
                     Ex[i,j+1,k+1] = - (vy_avg * Bz_avg - vz_avg * By_avg)
 
-                # Ey
+                # Ey at (i+0.5, j, k+0.5)
                 if i < N-1 and k < N-1:
                     vz_avg = 0.25 * (vz[i,j,k] + vz[i+1,j,k] + vz[i,j,k+1] + vz[i+1,j,k+1])
                     vx_avg = 0.25 * (vx[i,j,k] + vx[i+1,j,k] + vx[i,j,k+1] + vx[i+1,j,k+1])
@@ -101,7 +98,7 @@ for step in range(steps):
                     Bz_avg = 0.25 * (Bz[i,j,k] + Bz[i+1,j,k] + Bz[i,j,k+1] + Bz[i+1,j,k+1])
                     Ey[i+1,j,k+1] = - (vz_avg * Bx_avg - vx_avg * Bz_avg)
 
-                # Ez
+                # Ez at (i+0.5, j+0.5, k)
                 if i < N-1 and j < N-1:
                     vx_avg = 0.25 * (vx[i,j,k] + vx[i+1,j,k] + vx[i,j+1,k] + vx[i+1,j+1,k])
                     vy_avg = 0.25 * (vy[i,j,k] + vy[i+1,j,k] + vy[i,j+1,k] + vy[i+1,j+1,k])
@@ -109,7 +106,7 @@ for step in range(steps):
                     Bx_avg = 0.25 * (Bx[i,j,k] + Bx[i+1,j,k] + Bx[i,j+1,k] + Bx[i+1,j+1,k])
                     Ez[i+1,j+1,k] = - (vx_avg * By_avg - vy_avg * Bx_avg)
 
-    # Update Staggered B fields (True CT)
+    # Update Staggered B fields
     Bx[1:-1,:,:] += (dt / dx) * ((Ez[1:-1,1:,:] - Ez[1:-1,:-1,:]) - (Ey[1:-1,:,1:] - Ey[1:-1,:,:-1]))
     By[:,1:-1,:] += (dt / dx) * ((Ex[:,1:-1,1:] - Ex[:,1:-1,:-1]) - (Ez[1:,1:-1,:] - Ez[:-1,1:-1,:]))
     Bz[:,:,1:-1] += (dt / dx) * ((Ey[1:,:,1:-1] - Ey[:-1,:,1:-1]) - (Ex[:,1:,1:-1] - Ex[:,:-1,1:-1]))
