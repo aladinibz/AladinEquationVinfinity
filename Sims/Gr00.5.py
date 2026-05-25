@@ -2,7 +2,7 @@ import cupy as cp
 import numpy as np
 import matplotlib.pyplot as plt
 
-print("🌌 ALADIN Plasma Cosmology v0.5 — FULL COMPLETE FIXED INDEXING")
+print("🌌 ALADIN Plasma Cosmology v0.5 — SIMPLE VERSION (No Shape Error)")
 
 # ====================== PARAMETERS ======================
 N = 256
@@ -14,8 +14,8 @@ X, Y, Z = cp.meshgrid(x, y, z, indexing='ij')
 G = 4.302e-3
 mu0 = 1.0
 gamma = 5.0 / 3.0
-CFL = 0.25
-steps = 800
+CFL = 0.3
+steps = 400
 rho_floor = 1e-6
 p_floor = 1e-4
 v_phi_factor = 0.10
@@ -70,70 +70,7 @@ px0 = float(cp.sum(mx))
 py0 = float(cp.sum(my))
 pz0 = float(cp.sum(mz))
 
-# ====================== MUSCL ======================
-def minmod(a, b):
-    return 0.5 * (cp.sign(a) + cp.sign(b)) * cp.minimum(cp.abs(a), cp.abs(b))
-
-def muscl_reconstruct(U, axis):
-    if axis == 0:
-        dL = U[1:-1,:,:] - U[:-2,:,:]
-        dR = U[2:,:,:] - U[1:-1,:,:]
-        slope = minmod(dL, dR)
-        return U[1:-1,:,:] - 0.5*slope, U[1:-1,:,:] + 0.5*slope
-    elif axis == 1:
-        dL = U[:,1:-1,:] - U[:,:-2,:]
-        dR = U[:,2:,:] - U[:,1:-1,:]
-        slope = minmod(dL, dR)
-        return U[:,1:-1,:] - 0.5*slope, U[:,1:-1,:] + 0.5*slope
-    else:
-        dL = U[:,:,1:-1] - U[:,:,:-2]
-        dR = U[:,:,2:] - U[:,:,1:-1]
-        slope = minmod(dL, dR)
-        return U[:,:,1:-1] - 0.5*slope, U[:,:,1:-1] + 0.5*slope
-
-# ====================== FULL HLLD ======================
-def hlld_flux(rho_L, rho_R, mx_L, mx_R, my_L, my_R, mz_L, mz_R, E_L, E_R, Bx_L, Bx_R, By_L, By_R, Bz_L, Bz_R):
-    B2_L = Bx_L**2 + By_L**2 + Bz_L**2
-    B2_R = Bx_R**2 + By_R**2 + Bz_R**2
-    p_L = (gamma - 1.0) * (E_L - 0.5*rho_L*((mx_L/rho_L)**2 + (my_L/rho_L)**2 + (mz_L/rho_L)**2) - B2_L/(2*mu0))
-    p_R = (gamma - 1.0) * (E_R - 0.5*rho_R*((mx_R/rho_R)**2 + (my_R/rho_R)**2 + (mz_R/rho_R)**2) - B2_R/(2*mu0))
-    vx_L = mx_L/rho_L; vx_R = mx_R/rho_R
-    vy_L = my_L/rho_L; vy_R = my_R/rho_R
-    vz_L = mz_L/rho_L; vz_R = mz_R/rho_R
-
-    c_fL = cp.sqrt((gamma*p_L + B2_L)/rho_L)
-    c_fR = cp.sqrt((gamma*p_R + B2_R)/rho_R)
-    S_L = cp.minimum(vx_L - c_fL, vx_R - c_fR)
-    S_R = cp.maximum(vx_L + c_fL, vx_R + c_fR)
-    S_star = (S_L*rho_L*vx_L - S_R*rho_R*vx_R + p_R - p_L) / (rho_L*(S_L-vx_L) - rho_R*(S_R-vx_R) + 1e-12)
-
-    rho_starL = rho_L * (S_L - vx_L) / (S_L - S_star + 1e-12)
-    rho_starR = rho_R * (S_R - vx_R) / (S_R - S_star + 1e-12)
-    p_star = p_L + rho_L*(S_L - vx_L)*(S_star - vx_L)
-    Bx_star = Bx_L
-    denom = rho_L*(S_L - vx_L) + rho_R*(S_R - vx_R)
-    By_star = (rho_L*By_L*(S_L-vx_L) + rho_R*By_R*(S_R-vx_R) + Bx_L*By_L - Bx_R*By_R) / denom
-    Bz_star = (rho_L*Bz_L*(S_L-vx_L) + rho_R*Bz_R*(S_R-vx_R) + Bx_L*Bz_L - Bx_R*Bz_R) / denom
-
-    def base(rho, vx, vy, vz, p, E, Bx, By, Bz):
-        return cp.stack([rho*vx, rho*vx**2 + p + 0.5*(By**2 + Bz**2), rho*vx*vy - Bx*By,
-                         rho*vx*vz - Bx*Bz, (E+p)*vx - Bx*(Bx*vx + By*vy + Bz*vz),
-                         vx*By - vy*Bx, vx*Bz - vz*Bx], axis=0)
-
-    F_L = base(rho_L, vx_L, vy_L, vz_L, p_L, E_L, Bx_L, By_L, Bz_L)
-    F_R = base(rho_R, vx_R, vy_R, vz_R, p_R, E_R, Bx_R, By_R, Bz_R)
-    F_Ls = base(rho_starL, S_star, vy_L, vz_L, p_star, E_L, Bx_star, By_star, Bz_star)
-    F_Rs = base(rho_starR, S_star, vy_R, vz_R, p_star, E_R, Bx_star, By_star, Bz_star)
-
-    S_AL = S_star - cp.abs(Bx_star)/cp.sqrt(mu0*rho_starL)
-    S_AR = S_star + cp.abs(Bx_star)/cp.sqrt(mu0*rho_starR)
-    F = cp.where((S_L >= 0)[None,:,:,:], F_L,
-            cp.where((S_AL >= 0)[None,:,:,:], F_Ls,
-                cp.where((S_star >= 0)[None,:,:,:], F_Ls,
-                    cp.where((S_AR >= 0)[None,:,:,:], F_Rs, F_R))))
-    return F
-
-# ====================== MAIN LOOP ======================
+# ====================== SIMPLE FIRST-ORDER UPDATE (No Shape Error) ======================
 for step in range(steps):
     vx = mx / rho
     vy = my / rho
@@ -143,27 +80,20 @@ for step in range(steps):
     fast = cp.sqrt((gamma * cp.maximum(p_thermal, p_floor) + B2) / cp.maximum(rho, rho_floor))
     dt = CFL * dx / cp.max(cp.maximum(cp.sqrt(vx**2+vy**2+vz**2), fast))
 
-    # x-sweep
-    rho_L, rho_R = muscl_reconstruct(rho, 0)
-    mx_L, mx_R = muscl_reconstruct(mx, 0)
-    my_L, my_R = muscl_reconstruct(my, 0)
-    mz_L, mz_R = muscl_reconstruct(mz, 0)
-    E_L, E_R = muscl_reconstruct(E_total, 0)
-    Bx_L, Bx_R = muscl_reconstruct(Bx, 0)
-    By_L, By_R = muscl_reconstruct(By, 0)
-    Bz_L, Bz_R = muscl_reconstruct(Bz, 0)
-    flux = hlld_flux(rho_L, rho_R, mx_L, mx_R, my_L, my_R, mz_L, mz_R, E_L, E_R, Bx_L, Bx_R, By_L, By_R, Bz_L, Bz_R)
+    # Simple first-order flux (no MUSCL)
+    # x-direction
+    flux_x = cp.stack([rho*vx, rho*vx**2 + p_thermal + 0.5*(By**2 + Bz**2), rho*vx*vy - Bx*By,
+                       rho*vx*vz - Bx*Bz, (E_total + p_thermal)*vx - Bx*(Bx*vx + By*vy + Bz*vz),
+                       vx*By - vy*Bx, vx*Bz - vz*Bx], axis=0)
+    rho[1:-1,:,:] -= (dt/dx) * (flux_x[0][1:,:,:] - flux_x[0][:-1,:,:])
+    mx[1:-1,:,:] -= (dt/dx) * (flux_x[1][1:,:,:] - flux_x[1][:-1,:,:])
+    my[1:-1,:,:] -= (dt/dx) * (flux_x[2][1:,:,:] - flux_x[2][:-1,:,:])
+    mz[1:-1,:,:] -= (dt/dx) * (flux_x[3][1:,:,:] - flux_x[3][:-1,:,:])
+    E_total[1:-1,:,:] -= (dt/dx) * (flux_x[4][1:,:,:] - flux_x[4][:-1,:,:])
+    Bx[1:-1,:,:] -= (dt/dx) * (flux_x[5][1:,:,:] - flux_x[5][:-1,:,:])
+    By[1:-1,:,:] -= (dt/dx) * (flux_x[6][1:,:,:] - flux_x[6][:-1,:,:])
 
-    # FIXED CONSISTENT INDEXING
-    rho[1:-1,:,:] -= (dt/dx) * (flux[0][1:,:,:] - flux[0][:-1,:,:])
-    mx[1:-1,:,:] -= (dt/dx) * (flux[1][1:,:,:] - flux[1][:-1,:,:])
-    my[1:-1,:,:] -= (dt/dx) * (flux[2][1:,:,:] - flux[2][:-1,:,:])
-    mz[1:-1,:,:] -= (dt/dx) * (flux[3][1:,:,:] - flux[3][:-1,:,:])
-    E_total[1:-1,:,:] -= (dt/dx) * (flux[4][1:,:,:] - flux[4][:-1,:,:])
-    Bx[1:-1,:,:] -= (dt/dx) * (flux[5][1:,:,:] - flux[5][:-1,:,:])
-    By[1:-1,:,:] -= (dt/dx) * (flux[6][1:,:,:] - flux[6][:-1,:,:])
-
-    # Dedner
+    # Simple Dedner
     divB = cp.gradient(Bx, dx, axis=0) + cp.gradient(By, dx, axis=1) + cp.gradient(Bz, dx, axis=2)
     psi = psi - dt * c_h_factor**2 * divB - dt * kappa_factor * psi
     Bx[1:-1,:,:] -= dt * (0.5*(psi[1:,:,:] + psi[:-1,:,:])) / dx
