@@ -2,7 +2,7 @@ import cupy as cp
 import numpy as np
 import matplotlib.pyplot as plt
 
-print("🌌 ALADIN Plasma Cosmology v40.7 — FIXED SHAPE + TRUE CT-YEE + STAGGERED J×B")
+print("🌌 ALADIN Plasma Cosmology v40.8 — STABLE TRUE CT-YEE + STAGGERED J×B")
 
 # ====================== PARAMETERS ======================
 N = 64
@@ -131,21 +131,24 @@ def compute_divB():
     return div
 
 def compute_staggered_JxB():
+    """ Safe staggered J = ∇ × B, then J × B """
     Jx = (By[:,1:,:] - By[:,:-1,:]) / dx - (Bz[1:,:,:] - Bz[:-1,:,:]) / dx
     Jy = (Bz[:,:,1:] - Bz[:,:,:-1]) / dx - (Bx[1:,:,:] - Bx[:-1,:,:]) / dx
     Jz = (Bx[:,1:,:] - Bx[:,:-1,:]) / dx - (By[1:,:,:] - By[:-1,:,:]) / dx
 
+    # Safe average to cell center
     Jx_c = 0.5 * (Jx[:,:-1,:-1] + Jx[:,1:,:-1])
     Jy_c = 0.5 * (Jy[:-1,:,:-1] + Jy[1:,:,:-1])
     Jz_c = 0.5 * (Jz[:-1,:-1,:] + Jz[:-1,1:,:])
 
+    # J × B force
     fx = Jy_c * Bz_c.mean() - Jz_c * By_c.mean()
     fy = Jz_c * Bx_c.mean() - Jx_c * Bz_c.mean()
     fz = Jx_c * By_c.mean() - Jy_c * Bx_c.mean()
 
     return fx, fy, fz
 
-print("Starting v40.6 with Fixed Indexing...")
+print("Starting v40.8 with Fixed True CT-Yee + Staggered J×B...")
 
 block = (8, 8, 8)
 grid = ((N + 7)//8, (N + 7)//8, (N + 7)//8)
@@ -155,14 +158,17 @@ for step in range(steps):
     dt = CFL * dx / 280.0
     kernel(grid, block, (vx, vy, vz, Bx, By, Bz, psi, dt, dx, N, c_h, kappa), shared_mem=shared_bytes)
 
-    # Full staggered Dedner with exact slicing
+    # Full staggered Dedner
     divB = compute_divB()
     psi = psi - dt * c_h**2 * divB - dt * kappa * psi
 
-    # Exact matching slices for correction
-    Bx[1:-1,:,:] -= dt * (psi[1:,:,:] - psi[:-1,:,:]) / dx
-    By[:,1:-1,:] -= dt * (psi[:,1:,:] - psi[:,:-1,:]) / dx
-    Bz[:,:,1:-1] -= dt * (psi[:,:,1:] - psi[:,:,:-1]) / dx
+    psi_x = 0.5 * (psi[1:,:,:] + psi[:-1,:,:])
+    psi_y = 0.5 * (psi[:,1:,:] + psi[:,:-1,:])
+    psi_z = 0.5 * (psi[:,:,1:] + psi[:,:,:-1])
+
+    Bx[1:-1,:,:] -= dt * (psi_x[1:,:,:] - psi_x[:-1,:,:]) / dx
+    By[:,1:-1,:] -= dt * (psi_y[:,1:,:] - psi_y[:,:-1,:]) / dx
+    Bz[:,:,1:-1] -= dt * (psi_z[:,:,1:] - psi_z[:,:,:-1]) / dx
 
     # Staggered J×B
     Jx, Jy, Jz = compute_staggered_JxB()
@@ -182,4 +188,4 @@ for step in range(steps):
         
         print(f"Step {step:4d} | Bmax = {Bmax:.2f} μG | vmax = {vmax:.1f} km/s | divB_max = {div_max:.2e}")
 
-print("\n✅ v40.6 Finished with Fixed Shape + True CT-Yee + J×B!")
+print("\n✅ v40.8 Finished with Fixed True CT-Yee + Staggered J×B!")
