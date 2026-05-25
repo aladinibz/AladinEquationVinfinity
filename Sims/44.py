@@ -2,7 +2,7 @@ import cupy as cp
 import numpy as np
 import matplotlib.pyplot as plt
 
-print("🌌 ALADIN Plasma Cosmology v34.0 — True Staggered CT Yee + Dedner (Fixed Seeding)")
+print("🌌 ALADIN Plasma Cosmology v34.0 — True Staggered CT Yee + Your EMF Block")
 
 # ====================== PARAMETERS ======================
 N = 128
@@ -20,6 +20,16 @@ steps = 300
 rho_floor = 1e-6
 p_floor = 1e-4
 v_phi_factor = 0.12
+
+# NFW
+M_vir = 1.2e12
+c_nfw = 12.0
+r_s = 20.0
+rho0_nfw = M_vir / (4 * cp.pi * r_s**3 * (cp.log(1 + c_nfw) - c_nfw / (1 + c_nfw)))
+
+def nfw_enclosed_mass(r):
+    xx = r / r_s + 1e-12
+    return 4 * cp.pi * rho0_nfw * r_s**3 * (cp.log(1 + xx) - xx / (1 + xx))
 
 # ====================== FIELDS ======================
 rho = cp.ones((N, N, N), dtype=cp.float32) * 1e-3
@@ -42,7 +52,7 @@ r_cyl = cp.sqrt(X**2 + Y**2)
 rho *= cp.exp(-r_cyl / 8.0) * cp.exp(-Z**2 / 2.25)
 
 r3d = cp.sqrt(X**2 + Y**2 + Z**2 + 1e-12)
-M_dm = nfw_enclosed_mass(r3d)   # define function below
+M_dm = nfw_enclosed_mass(r3d)
 g_r = -G * M_dm / r3d**2
 v_phi = v_phi_factor * cp.sqrt(cp.maximum(r_cyl * cp.abs(g_r), 0.0))
 vx = -v_phi * (Y / (r_cyl + 1e-8))
@@ -57,17 +67,10 @@ mass0 = float(cp.sum(rho))
 E0 = float(cp.sum(E_total))
 Lz0 = float(cp.sum(rho * (X*vy - Y*vx)))
 
-# ====================== NFW FUNCTION ======================
-def nfw_enclosed_mass(r):
-    xx = r / 20.0 + 1e-12
-    return 4 * cp.pi * rho0_nfw * 20.0**3 * (cp.log(1 + xx) - xx / (1 + xx))
-
-# ====================== STAGGERED B SEEDING (FIXED) ======================
+# ====================== STAGGERED B SEEDING ======================
 B0 = 5.0
 Bphi = 2.0
-
-# Correct seeding for staggered grids
-Bx[1:,:,:] = -Bphi * (Y[1:,:,:] / (r_cyl[1:,:,:] + 1e-8))   # use [1:] for N+1 size
+Bx[1:,:,:] = -Bphi * (Y[1:,:,:] / (r_cyl[1:,:,:] + 1e-8))
 By[:,1:,:] =  Bphi * (X[:,1:,:] / (r_cyl[:,1:,:] + 1e-8))
 Bz[:,:,1:] = B0 * cp.exp(-(X[:,:,1:]**2 + Y[:,:,1:]**2 + Z[:,:,1:]**2) / 200.0)
 
@@ -78,7 +81,11 @@ for step in range(steps):
     vz = mz / (rho + 1e-30)
     dt = 0.25 * dx / 150.0
 
-    # Compute Edge EMFs
+    # ====================== COMPUTE EDGE EMFs (YOUR BLOCK) ======================
+    Ex.fill(0)
+    Ey.fill(0)
+    Ez.fill(0)
+
     for i in range(N):
         for j in range(N):
             for k in range(N):
@@ -106,15 +113,26 @@ for step in range(steps):
                     Bx_avg = 0.25 * (Bx[i,j,k] + Bx[i+1,j,k] + Bx[i,j+1,k] + Bx[i+1,j+1,k])
                     Ez[i+1,j+1,k] = - (vx_avg * By_avg - vy_avg * Bx_avg)
 
-    # Update Staggered B fields
-    Bx[1:-1,:,:] += (dt / dx) * ((Ez[1:-1,1:,:] - Ez[1:-1,:-1,:]) - (Ey[1:-1,:,1:] - Ey[1:-1,:,:-1]))
-    By[:,1:-1,:] += (dt / dx) * ((Ex[:,1:-1,1:] - Ex[:,1:-1,:-1]) - (Ez[1:,1:-1,:] - Ez[:-1,1:-1,:]))
-    Bz[:,:,1:-1] += (dt / dx) * ((Ey[1:,:,1:-1] - Ey[:-1,:,1:-1]) - (Ex[:,1:,1:-1] - Ex[:,:-1,1:-1]))
+    # ====================== UPDATE STAGGERED B FIELDS ======================
+    Bx[1:-1,:,:] += (dt / dx) * (
+        (Ez[1:-1,1:,:] - Ez[1:-1,:-1,:]) - 
+        (Ey[1:-1,:,1:] - Ey[1:-1,:,:-1])
+    )
+
+    By[:,1:-1,:] += (dt / dx) * (
+        (Ex[:,1:-1,1:] - Ex[:,1:-1,:-1]) - 
+        (Ez[1:,1:-1,:] - Ez[:-1,1:-1,:])
+    )
+
+    Bz[:,:,1:-1] += (dt / dx) * (
+        (Ey[1:,:,1:-1] - Ey[:-1,:,1:-1]) - 
+        (Ex[:,1:,1:-1] - Ex[:,:-1,1:-1])
+    )
 
     if step % 50 == 0:
         vmax = float(cp.max(cp.sqrt(vx**2 + vy**2 + vz**2)))
         Bmax = float(cp.max(cp.sqrt(Bx**2 + By**2 + Bz**2)))
         print(f"Step {step:4d} | Bmax = {Bmax:.2f} μG | vmax = {vmax:.1f} km/s")
 
-print("\n✅ Staggered CT Yee update finished.")
-print("Run it and paste the full console output.")
+print("\n✅ Staggered CT Yee block integrated and ran.")
+print("Paste the full console output.")
