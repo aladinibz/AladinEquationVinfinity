@@ -2,7 +2,7 @@ import cupy as cp
 import numpy as np
 import matplotlib.pyplot as plt
 
-print("🌌 ALADIN Plasma Cosmology v45.0 — STABLE (Energy + Velocity Clamp)")
+print("🌌 ALADIN Plasma Cosmology v45.2 — CRITIC FIXES APPLIED")
 
 # ====================== PARAMETERS ======================
 N = 64
@@ -13,15 +13,15 @@ X, Y, Z = cp.meshgrid(x, y, z, indexing='ij')
 
 G = 4.302e-3
 gamma = 5.0 / 3.0
-CFL = 0.10
+CFL = 0.08
 steps = 400
-rho_floor = 1e-5
+rho_floor = 1e-4
 p_floor = 1e-6
-v_max_cap = 8.0   # velocity clamp
+v_max_cap = 5.0
 
-v_phi_factor = 0.08
-c_h_factor = 10.0
-kappa_factor = 18.0
+v_phi_factor = 0.06
+c_h_factor = 8.0
+kappa_factor = 20.0
 
 # ====================== NFW ======================
 M_vir = 1.2e12
@@ -52,7 +52,7 @@ void ct_emf_kernel(float* vx, float* vy, float* vz,
         float By_avg = 0.25f * (By[i*N+j] + By[(i+1)*N+j] + By[i*N+j+1] + By[(i+1)*N+j+1]);
 
         float sign_v = (vx_avg * vy_avg > 0.0f) ? 1.0f : -1.0f;
-        float Ez_val = - (vx_avg * By_avg - vy_avg * Bx_avg) * (1.0f + 0.05f * sign_v);
+        float Ez_val = - (vx_avg * By_avg - vy_avg * Bx_avg) * (1.0f + 0.03f * sign_v);
 
         int bz_idx = (i * N + j) * (N + 1) + k;
         Bz[bz_idx] += (dt / dx) * Ez_val;
@@ -63,7 +63,7 @@ void ct_emf_kernel(float* vx, float* vy, float* vz,
 kernel = cp.RawKernel(kernel_code, 'ct_emf_kernel')
 
 # ====================== FIELDS ======================
-rho = cp.ones((N, N, N), dtype=cp.float32) * 1e-3
+rho = cp.maximum(cp.ones((N, N, N), dtype=cp.float32) * 1e-3, rho_floor)
 mx = cp.zeros((N, N, N), dtype=cp.float32)
 my = cp.zeros((N, N, N), dtype=cp.float32)
 mz = cp.zeros((N, N, N), dtype=cp.float32)
@@ -76,6 +76,7 @@ psi = cp.zeros((N, N, N), dtype=cp.float32)
 
 r_cyl = cp.sqrt(X**2 + Y**2)
 rho *= cp.exp(-r_cyl / 8.0) * cp.exp(-Z**2 / 2.25)
+rho = cp.maximum(rho, rho_floor)
 
 r3d = cp.sqrt(X**2 + Y**2 + Z**2 + 1e-12)
 M_dm = nfw_enclosed_mass(r3d)
@@ -90,13 +91,13 @@ mx = rho * vx
 my = rho * vy
 mz = rho * vz
 
-B0 = 0.8
-Bphi = 0.5
+B0 = 0.6
+Bphi = 0.4
 Bx[1:,:,:] = -Bphi * (Y[0:N,:,:] / (r_cyl[0:N,:,:] + 1e-8))
 By[:,1:,:] =  Bphi * (X[:,0:N,:] / (r_cyl[:,0:N,:] + 1e-8))
-Bz[:,:,1:] = B0 * cp.exp(-(X[:,:,0:N]**2 + Y[:,:,0:N]**2 + Z[:,:,0:N]**2) / 300.0)
+Bz[:,:,1:] = B0 * cp.exp(-(X[:,:,0:N]**2 + Y[:,:,0:N]**2 + Z[:,:,0:N]**2) / 400.0)
 
-c_h = c_h_factor * 100.0
+c_h = c_h_factor * 80.0
 kappa = kappa_factor / dx
 
 def cell_center_B():
@@ -128,13 +129,19 @@ def compute_pressure_gradient(p):
     pz = (cp.roll(p, -1, axis=2) - cp.roll(p, 1, axis=2)) / (2*dx)
     return px, py, pz
 
-print("Starting v45.0 — Stabilized with Energy & Velocity Protection...")
+# Initial diagnostics
+print("Initial checks:")
+print("rho min/max:", float(cp.min(rho)), float(cp.max(rho)))
+print("vx max:", float(cp.max(cp.abs(vx))))
+print("Bz max:", float(cp.max(cp.abs(Bz))))
+
+print("\nStarting v45.2 — Stabilized...")
 
 block = (8, 8, 8)
 grid = ((N + 7)//8, (N + 7)//8, (N + 7)//8)
 
 for step in range(steps):
-    dt = CFL * dx / 250.0
+    dt = CFL * dx / 320.0
 
     kernel(grid, block, (vx, vy, vz, Bx, By, Bz, dt, dx, N), shared_mem=6*1000*4)
 
@@ -151,10 +158,10 @@ for step in range(steps):
     # Cell-centered fields
     Bx_c, By_c, Bz_c = cell_center_B()
 
-    # Energy consistency + floors
+    # Energy consistency
     E_kin = 0.5 * rho * (vx**2 + vy**2 + vz**2)
     E_mag = 0.5 * (Bx_c**2 + By_c**2 + Bz_c**2)
-    E_total = cp.maximum(E_total, E_kin + E_mag + 1e-6)
+    E_total = cp.maximum(E_total, E_kin + E_mag + 1e-5)
 
     p_thermal = cp.maximum((gamma - 1.0) * (E_total - E_kin - E_mag), p_floor)
 
@@ -166,7 +173,7 @@ for step in range(steps):
     my += dt * (py + Jy)
     mz += dt * (pz + Jz)
 
-    # Update with safety
+    # Update with floors
     rho = cp.maximum(rho, rho_floor)
     vx = mx / rho
     vy = my / rho
@@ -174,12 +181,17 @@ for step in range(steps):
 
     # Velocity clamp
     v = cp.sqrt(vx**2 + vy**2 + vz**2)
-    scale = cp.minimum(1.0, v_max_cap / (v + 1e-12))
+    scale = cp.minimum(1.0, v_max_cap / (v + 1e-8))
     vx *= scale
     vy *= scale
     vz *= scale
 
-    # Final safety
+    # Momentum consistency
+    mx = rho * vx
+    my = rho * vy
+    mz = rho * vz
+
+    # Safety
     vx = cp.nan_to_num(vx, nan=0.0, posinf=v_max_cap, neginf=-v_max_cap)
     vy = cp.nan_to_num(vy, nan=0.0, posinf=v_max_cap, neginf=-v_max_cap)
     vz = cp.nan_to_num(vz, nan=0.0, posinf=v_max_cap, neginf=-v_max_cap)
@@ -191,6 +203,6 @@ for step in range(steps):
         Bmax = float(cp.nanmax(Bmag))
         print(f"Step {step:4d} | Bmax = {Bmax:.2f} μG | vmax = {vmax:.1f} km/s | divB_max = {div_max:.2e}")
 
-print("\n✅ v45.0 Stabilized Version Finished!")
+print("\n✅ v45.2 Finished!")
 Jx_final, Jy_final, Jz_final = compute_JxB()
 print(f"Final avg |J×B| = {float(cp.mean(cp.sqrt(Jx_final**2 + Jy_final**2 + Jz_final**2))):.2e}")
