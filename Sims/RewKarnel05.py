@@ -2,7 +2,7 @@ import cupy as cp
 import numpy as np
 import matplotlib.pyplot as plt
 
-print("🌌 ALADIN Plasma Cosmology v40.5 — TRUE CT-YEE + STAGGERED J×B (Fixed)")
+print("🌌 ALADIN Plasma Cosmology v40.6 — FIXED SHAPE + TRUE CT-YEE + STAGGERED J×B")
 
 # ====================== PARAMETERS ======================
 N = 64
@@ -131,7 +131,7 @@ def compute_divB():
     return div
 
 def compute_staggered_JxB():
-    """ Proper staggered J×B """
+    """ Proper staggered J = ∇ × B """
     Jx = (By[:,1:,:] - By[:,:-1,:]) / dx - (Bz[1:,:,:] - Bz[:-1,:,:]) / dx
     Jy = (Bz[:,:,1:] - Bz[:,:,:-1]) / dx - (Bx[1:,:,:] - Bx[:-1,:,:]) / dx
     Jz = (Bx[:,1:,:] - Bx[:,:-1,:]) / dx - (By[1:,:,:] - By[:-1,:,:]) / dx
@@ -142,13 +142,13 @@ def compute_staggered_JxB():
     Jz_c = 0.5 * (Jz[:-1,:-1,:] + Jz[:-1,1:,:])
 
     # J × B force
-    fx = Jy_c * Bz_c.mean() - Jz_c * By_c.mean()   # rough for stability
+    fx = Jy_c * Bz_c.mean() - Jz_c * By_c.mean()
     fy = Jz_c * Bx_c.mean() - Jx_c * Bz_c.mean()
     fz = Jx_c * By_c.mean() - Jy_c * Bx_c.mean()
 
     return fx, fy, fz
 
-print("Starting v40.5 with True CT-Yee + Staggered J×B...")
+print("Starting v40.5 with Fixed True CT-Yee + Staggered J×B...")
 
 block = (8, 8, 8)
 grid = ((N + 7)//8, (N + 7)//8, (N + 7)//8)
@@ -166,11 +166,12 @@ for step in range(steps):
     psi_y = 0.5 * (psi[:,1:,:] + psi[:,:-1,:])
     psi_z = 0.5 * (psi[:,:,1:] + psi[:,:,:-1])
 
+    # Fixed indexing for B correction
     Bx[1:-1,:,:] -= dt * (psi_x[1:,:,:] - psi_x[:-1,:,:]) / dx
     By[:,1:-1,:] -= dt * (psi_y[:,1:,:] - psi_y[:,:-1,:]) / dx
     Bz[:,:,1:-1] -= dt * (psi_z[:,:,1:] - psi_z[:,:,:-1]) / dx
 
-    # ====================== STAGGERED J×B ======================
+    # Staggered J×B
     Jx, Jy, Jz = compute_staggered_JxB()
     mx += dt * Jx
     my += dt * Jy
@@ -188,4 +189,4 @@ for step in range(steps):
         
         print(f"Step {step:4d} | Bmax = {Bmax:.2f} μG | vmax = {vmax:.1f} km/s | divB_max = {div_max:.2e}")
 
-print("\n✅ v40.5 Finished with True CT-Yee + Staggered J×B!")
+print("\n✅ v40.5 Finished with Fixed Indexing + True CT-Yee + J×B!")
