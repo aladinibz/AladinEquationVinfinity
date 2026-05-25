@@ -2,7 +2,7 @@ import cupy as cp
 import numpy as np
 import matplotlib.pyplot as plt
 
-print("🌌 ALADIN Plasma Cosmology v43.1 — FIXED SHAPES + Char Recon + JxB + Pressure")
+print("🌌 ALADIN Plasma Cosmology v44.0 — CLEAN CELL-CENTERED + FIXED SHAPES")
 
 # ====================== PARAMETERS ======================
 N = 64
@@ -31,20 +31,7 @@ def nfw_enclosed_mass(r):
     xx = r / r_s + 1e-12
     return 4 * cp.pi * rho0_nfw * r_s**3 * (cp.log(1 + xx) - xx / (1 + xx))
 
-# ====================== MINMOD ======================
-def minmod(a, b):
-    return cp.sign(a) * cp.minimum(cp.abs(a), cp.abs(b)) * (cp.sign(a) == cp.sign(b))
-
-# ====================== PLM RECONSTRUCTION ======================
-def reconstruct_plm(q, axis=0):
-    dq_right = cp.roll(q, -1, axis=axis) - q
-    dq_left = q - cp.roll(q, 1, axis=axis)
-    slope = minmod(dq_left, dq_right)
-    qL = q + 0.5 * slope
-    qR = cp.roll(q, -1, axis=axis) - 0.5 * cp.roll(slope, -1, axis=axis)
-    return qL, qR
-
-# ====================== KERNEL (Upwind CT) ======================
+# ====================== KERNEL (Upwind CT EMF) ======================
 kernel_code = r'''
 extern "C" __global__
 void ct_emf_kernel(float* vx, float* vy, float* vz,
@@ -110,6 +97,12 @@ Bz[:,:,1:] = B0 * cp.exp(-(X[:,:,0:N]**2 + Y[:,:,0:N]**2 + Z[:,:,0:N]**2) / 250.
 c_h = c_h_factor * 120.0
 kappa = kappa_factor / dx
 
+def cell_center_B():
+    Bx_c = 0.5 * (Bx[1:,:,:] + Bx[:-1,:,:])
+    By_c = 0.5 * (By[:,1:,:] + By[:,:-1,:])
+    Bz_c = 0.5 * (Bz[:,:,1:] + Bz[:,:,:-1])
+    return Bx_c, By_c, Bz_c
+
 def compute_divB():
     div = cp.zeros((N, N, N), dtype=cp.float32)
     div += (Bx[1:,:,:] - Bx[:-1,:,:]) / dx
@@ -117,28 +110,26 @@ def compute_divB():
     div += (Bz[:,:,1:] - Bz[:,:,:-1]) / dx
     return div
 
-def compute_staggered_JxB():
-    Bx_c = 0.5 * (Bx[1:,:,:] + Bx[:-1,:,:])
-    By_c = 0.5 * (By[:,1:,:] + By[:,:-1,:])
-    Bz_c = 0.5 * (Bz[:,:,1:] + Bz[:,:,:-1])
-
-    Jx = (cp.roll(Bz_c, -1, axis=1) - cp.roll(Bz_c, 1, axis=1)) / (2*dx) - (cp.roll(By_c, -1, axis=2) - cp.roll(By_c, 1, axis=2)) / (2*dx)
-    Jy = (cp.roll(Bx_c, -1, axis=2) - cp.roll(Bx_c, 1, axis=2)) / (2*dx) - (cp.roll(Bz_c, -1, axis=0) - cp.roll(Bz_c, 1, axis=0)) / (2*dx)
-    Jz = (cp.roll(By_c, -1, axis=0) - cp.roll(By_c, 1, axis=0)) / (2*dx) - (cp.roll(Bx_c, -1, axis=1) - cp.roll(Bx_c, 1, axis=1)) / (2*dx)
-
+def compute_JxB():
+    Bx_c, By_c, Bz_c = cell_center_B()
+    Jx = (cp.roll(Bz_c, -1, axis=1) - cp.roll(Bz_c, 1, axis=1)) / (2*dx) - \
+         (cp.roll(By_c, -1, axis=2) - cp.roll(By_c, 1, axis=2)) / (2*dx)
+    Jy = (cp.roll(Bx_c, -1, axis=2) - cp.roll(Bx_c, 1, axis=2)) / (2*dx) - \
+         (cp.roll(Bz_c, -1, axis=0) - cp.roll(Bz_c, 1, axis=0)) / (2*dx)
+    Jz = (cp.roll(By_c, -1, axis=0) - cp.roll(By_c, 1, axis=0)) / (2*dx) - \
+         (cp.roll(Bx_c, -1, axis=1) - cp.roll(Bx_c, 1, axis=1)) / (2*dx)
     fx = Jy * Bz_c - Jz * By_c
     fy = Jz * Bx_c - Jx * Bz_c
     fz = Jx * By_c - Jy * Bx_c
     return fx, fy, fz
 
 def compute_pressure_gradient(p):
-    px = (p[1:,:,:] - p[:-1,:,:]) / dx
-    py = (p[:,1:,:] - p[:,:-1,:]) / dx
-    pz = (p[:,:,1:] - p[:,:,:-1]) / dx
-    # Trim to (N,N,N)
-    return -px[:-1,:,:], -py[:,:-1,:], -pz[:,:,:-1]
+    px = (cp.roll(p, -1, axis=0) - cp.roll(p, 1, axis=0)) / (2*dx)
+    py = (cp.roll(p, -1, axis=1) - cp.roll(p, 1, axis=1)) / (2*dx)
+    pz = (cp.roll(p, -1, axis=2) - cp.roll(p, 1, axis=2)) / (2*dx)
+    return px, py, pz
 
-print("Starting v43.1 with Fixed Shapes...")
+print("Starting v44.0 — Clean Cell-Centered Architecture...")
 
 block = (8, 8, 8)
 grid = ((N + 7)//8, (N + 7)//8, (N + 7)//8)
@@ -146,7 +137,7 @@ grid = ((N + 7)//8, (N + 7)//8, (N + 7)//8)
 for step in range(steps):
     dt = CFL * dx / 220.0
 
-    # CT EMF kernel
+    # CT EMF update (staggered only)
     kernel(grid, block, (vx, vy, vz, Bx, By, Bz, dt, dx, N), shared_mem=6*1000*4)
 
     # Dedner
@@ -159,20 +150,17 @@ for step in range(steps):
     By[:,1:-1,:] -= dt * psi_y
     Bz[:,:,1:-1] -= dt * psi_z
 
-    # Pressure gradient (fixed shape)
-    p_thermal = cp.maximum((gamma - 1.0) * (E_total - 0.5*rho*(vx**2 + vy**2 + vz**2) - 0.5*(0.25*(Bx[1:,:,:]**2 + Bx[:-1,:,:]**2) + 0.25*(By[:,1:,:]**2 + By[:,:-1,:]**2) + 0.25*(Bz[:,:,1:]**2 + Bz[:,:,:-1]**2))), p_floor)
+    # Physics on cell-centered fields
+    Bx_c, By_c, Bz_c = cell_center_B()
+    p_thermal = cp.maximum((gamma - 1.0) * (E_total - 0.5*rho*(vx**2 + vy**2 + vz**2) - 0.5*(Bx_c**2 + By_c**2 + Bz_c**2)), p_floor)
+
     px, py, pz = compute_pressure_gradient(p_thermal)
-    mx += dt * px
-    my += dt * py
-    mz += dt * pz
+    Jx, Jy, Jz = compute_JxB()
 
-    # J×B (fixed shape)
-    Jx, Jy, Jz = compute_staggered_JxB()
-    mx += dt * Jx
-    my += dt * Jy
-    mz += dt * Jz
+    mx += dt * (px + Jx)
+    my += dt * (py + Jy)
+    mz += dt * (pz + Jz)
 
-    # Update velocity
     vx = mx / rho
     vy = my / rho
     vz = mz / rho
@@ -180,13 +168,10 @@ for step in range(steps):
     if step % 50 == 0:
         div_max = float(cp.max(cp.abs(compute_divB())))
         vmax = float(cp.max(cp.sqrt(vx**2 + vy**2 + vz**2)))
-        Bx_c = 0.5 * (Bx[1:,:,:] + Bx[:-1,:,:])
-        By_c = 0.5 * (By[:,1:,:] + By[:,:-1,:])
-        Bz_c = 0.5 * (Bz[:,:,1:] + Bz[:,:,:-1])
         Bmag = cp.sqrt(Bx_c**2 + By_c**2 + Bz_c**2)
         Bmax = float(cp.nanmax(Bmag))
         print(f"Step {step:4d} | Bmax = {Bmax:.2f} μG | vmax = {vmax:.1f} km/s | divB_max = {div_max:.2e}")
 
-print("\n✅ v43.1 Finished with Fixed Shapes!")
-Jx_final, Jy_final, Jz_final = compute_staggered_JxB()
+print("\n✅ v44.0 Finished with Clean Architecture!")
+Jx_final, Jy_final, Jz_final = compute_JxB()
 print(f"Final avg |J×B| = {float(cp.mean(cp.sqrt(Jx_final**2 + Jy_final**2 + Jz_final**2))):.2e}")
