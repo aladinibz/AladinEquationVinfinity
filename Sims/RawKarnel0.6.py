@@ -2,7 +2,7 @@ import cupy as cp
 import numpy as np
 import matplotlib.pyplot as plt
 
-print("🌌 ALADIN Plasma Cosmology v45.2 — CRITIC FIXES APPLIED")
+print("🌌 ALADIN Plasma Cosmology v45.4 — Balanced Stability + JxB Visible")
 
 # ====================== PARAMETERS ======================
 N = 64
@@ -13,7 +13,7 @@ X, Y, Z = cp.meshgrid(x, y, z, indexing='ij')
 
 G = 4.302e-3
 gamma = 5.0 / 3.0
-CFL = 0.08
+CFL = 0.09
 steps = 400
 rho_floor = 1e-4
 p_floor = 1e-6
@@ -52,10 +52,13 @@ void ct_emf_kernel(float* vx, float* vy, float* vz,
         float By_avg = 0.25f * (By[i*N+j] + By[(i+1)*N+j] + By[i*N+j+1] + By[(i+1)*N+j+1]);
 
         float sign_v = (vx_avg * vy_avg > 0.0f) ? 1.0f : -1.0f;
-        float Ez_val = - (vx_avg * By_avg - vy_avg * Bx_avg) * (1.0f + 0.03f * sign_v);
+        float Ez_val = - (vx_avg * By_avg - vy_avg * Bx_avg) * (1.0f + 0.012f * sign_v);
 
         int bz_idx = (i * N + j) * (N + 1) + k;
         Bz[bz_idx] += (dt / dx) * Ez_val;
+
+        if (Bz[bz_idx] > 4.0f) Bz[bz_idx] = 4.0f;
+        if (Bz[bz_idx] < -4.0f) Bz[bz_idx] = -4.0f;
     }
 }
 '''
@@ -91,13 +94,13 @@ mx = rho * vx
 my = rho * vy
 mz = rho * vz
 
-B0 = 0.6
-Bphi = 0.4
+B0 = 0.5
+Bphi = 0.3
 Bx[1:,:,:] = -Bphi * (Y[0:N,:,:] / (r_cyl[0:N,:,:] + 1e-8))
 By[:,1:,:] =  Bphi * (X[:,0:N,:] / (r_cyl[:,0:N,:] + 1e-8))
-Bz[:,:,1:] = B0 * cp.exp(-(X[:,:,0:N]**2 + Y[:,:,0:N]**2 + Z[:,:,0:N]**2) / 400.0)
+Bz[:,:,1:] = B0 * cp.exp(-(X[:,:,0:N]**2 + Y[:,:,0:N]**2 + Z[:,:,0:N]**2) / 500.0)
 
-c_h = c_h_factor * 80.0
+c_h = c_h_factor * 60.0
 kappa = kappa_factor / dx
 
 def cell_center_B():
@@ -129,19 +132,19 @@ def compute_pressure_gradient(p):
     pz = (cp.roll(p, -1, axis=2) - cp.roll(p, 1, axis=2)) / (2*dx)
     return px, py, pz
 
-# Initial diagnostics
+# Initial checks
 print("Initial checks:")
 print("rho min/max:", float(cp.min(rho)), float(cp.max(rho)))
 print("vx max:", float(cp.max(cp.abs(vx))))
 print("Bz max:", float(cp.max(cp.abs(Bz))))
 
-print("\nStarting v45.2 — Stabilized...")
+print("\nStarting v45.3 — Balanced & Stabilized...")
 
 block = (8, 8, 8)
 grid = ((N + 7)//8, (N + 7)//8, (N + 7)//8)
 
 for step in range(steps):
-    dt = CFL * dx / 320.0
+    dt = CFL * dx / 350.0
 
     kernel(grid, block, (vx, vy, vz, Bx, By, Bz, dt, dx, N), shared_mem=6*1000*4)
 
@@ -155,7 +158,7 @@ for step in range(steps):
     By[:,1:-1,:] -= dt * psi_y
     Bz[:,:,1:-1] -= dt * psi_z
 
-    # Cell-centered fields
+    # Cell-centered
     Bx_c, By_c, Bz_c = cell_center_B()
 
     # Energy consistency
@@ -173,7 +176,7 @@ for step in range(steps):
     my += dt * (py + Jy)
     mz += dt * (pz + Jz)
 
-    # Update with floors
+    # Update
     rho = cp.maximum(rho, rho_floor)
     vx = mx / rho
     vy = my / rho
@@ -186,15 +189,14 @@ for step in range(steps):
     vy *= scale
     vz *= scale
 
-    # Momentum consistency
     mx = rho * vx
     my = rho * vy
     mz = rho * vz
 
-    # Safety
-    vx = cp.nan_to_num(vx, nan=0.0, posinf=v_max_cap, neginf=-v_max_cap)
-    vy = cp.nan_to_num(vy, nan=0.0, posinf=v_max_cap, neginf=-v_max_cap)
-    vz = cp.nan_to_num(vz, nan=0.0, posinf=v_max_cap, neginf=-v_max_cap)
+    # Global safety net
+    Bx = cp.nan_to_num(Bx, nan=0.0, posinf=5.0, neginf=-5.0)
+    By = cp.nan_to_num(By, nan=0.0, posinf=5.0, neginf=-5.0)
+    Bz = cp.nan_to_num(Bz, nan=0.0, posinf=5.0, neginf=-5.0)
 
     if step % 50 == 0:
         div_max = float(cp.max(cp.abs(compute_divB())))
@@ -203,6 +205,6 @@ for step in range(steps):
         Bmax = float(cp.nanmax(Bmag))
         print(f"Step {step:4d} | Bmax = {Bmax:.2f} μG | vmax = {vmax:.1f} km/s | divB_max = {div_max:.2e}")
 
-print("\n✅ v45.2 Finished!")
+print("\n✅ v45.3 Finished!")
 Jx_final, Jy_final, Jz_final = compute_JxB()
 print(f"Final avg |J×B| = {float(cp.mean(cp.sqrt(Jx_final**2 + Jy_final**2 + Jz_final**2))):.2e}")
