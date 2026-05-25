@@ -2,7 +2,7 @@ import cupy as cp
 import numpy as np
 import matplotlib.pyplot as plt
 
-print("🌌 ALADIN Plasma Cosmology v61.0 — Brio-Wu MHD Shock Tube Test")
+print("🌌 ALADIN Plasma Cosmology v61.1 — Brio-Wu MHD Shock Tube Test (Fixed)")
 
 # ====================== PARAMETERS ======================
 N = 512
@@ -12,31 +12,19 @@ x = cp.linspace(0, L, N, dtype=cp.float32)
 
 gamma = 2.0   # Brio-Wu uses gamma=2
 CFL = 0.4
-steps = 200
-t_final = 0.2
+steps = 300
 
-# ====================== BRIO-WU INITIAL CONDITIONS ======================
-rho = cp.ones(N, dtype=cp.float32)
-mx = cp.zeros(N, dtype=cp.float32)
-my = cp.zeros(N, dtype=cp.float32)
-mz = cp.zeros(N, dtype=cp.float32)
-E_total = cp.ones(N, dtype=cp.float32) * 0.5
+# ====================== MUSCL RECONSTRUCTION ======================
+def minmod(a, b):
+    return cp.sign(a) * cp.minimum(cp.abs(a), cp.abs(b)) * (cp.sign(a) == cp.sign(b))
 
-Bx = cp.ones(N+1, dtype=cp.float32) * 0.75   # constant normal field
-By = cp.zeros(N, dtype=cp.float32)
-Bz = cp.zeros(N, dtype=cp.float32)
-
-# Left state (x < 0.5)
-left = x < 0.5
-rho[left] = 1.0
-E_total[left] = 1.0 / (gamma - 1) + 0.5 * (1.0**2 + 0.0**2) + 0.5 * (0.75**2 + 1.0**2)
-By[left] = 1.0
-
-# Right state (x > 0.5)
-right = x >= 0.5
-rho[right] = 0.125
-E_total[right] = 0.1 / (gamma - 1) + 0.5 * (0.125 * 0.0**2) + 0.5 * (0.75**2 + (-1.0)**2)
-By[right] = -1.0
+def reconstruct_plm(q):
+    dq_right = cp.roll(q, -1) - q
+    dq_left = q - cp.roll(q, 1)
+    slope = minmod(dq_left, dq_right)
+    qL = q + 0.5 * slope
+    qR = cp.roll(q, -1) - 0.5 * cp.roll(slope, -1)
+    return qL, qR
 
 # ====================== HLLD SOLVER ======================
 def hlld_flux_1d(rhoL, rhoR, mxL, mxR, myL, myR, mzL, mzR, EL, ER, pL, pR, Bx_normal):
@@ -109,11 +97,33 @@ def hlld_flux_1d(rhoL, rhoR, mxL, mxR, myL, myR, mzL, mzR, EL, ER, pL, pR, Bx_no
 
     return flux_mass, flux_mx, flux_my, flux_mz, flux_energy
 
-# ====================== 1D SHOCK TUBE EVOLUTION ======================
+# ====================== INITIAL CONDITIONS (Brio-Wu) ======================
+rho = cp.ones(N, dtype=cp.float32)
+mx = cp.zeros(N, dtype=cp.float32)
+my = cp.zeros(N, dtype=cp.float32)
+mz = cp.zeros(N, dtype=cp.float32)
+E_total = cp.ones(N, dtype=cp.float32) * 0.5
+
+Bx = cp.ones(N+1, dtype=cp.float32) * 0.75   # constant normal field
+By = cp.zeros(N, dtype=cp.float32)
+Bz = cp.zeros(N, dtype=cp.float32)
+
+# Left state (x < 0.5)
+left = x < 0.5
+rho[left] = 1.0
+E_total[left] = 1.0 / (gamma - 1) + 0.5 * (1.0**2) + 0.5 * (0.75**2 + 1.0**2)
+By[left] = 1.0
+
+# Right state (x > 0.5)
+right = x >= 0.5
+rho[right] = 0.125
+E_total[right] = 0.1 / (gamma - 1) + 0.5 * (0.125 * 0.0**2) + 0.5 * (0.75**2 + (-1.0)**2)
+By[right] = -1.0
+
 print("Running Brio-Wu MHD Shock Tube Test...")
 
 for step in range(steps):
-    dt = CFL * dx / 2.0   # conservative CFL for test
+    dt = CFL * dx / 2.0   # conservative CFL for 1D test
 
     # MUSCL reconstruction
     rhoL, rhoR = reconstruct_plm(rho)
@@ -121,8 +131,8 @@ for step in range(steps):
     myL, myR = reconstruct_plm(my)
     mzL, mzR = reconstruct_plm(mz)
     EL, ER = reconstruct_plm(E_total)
-    pL = cp.maximum((gamma - 1) * (EL - 0.5 * (mxL**2 + myL**2 + mzL**2) / rhoL), p_floor)
-    pR = cp.maximum((gamma - 1) * (ER - 0.5 * (mxR**2 + myR**2 + mzR**2) / rhoR), p_floor)
+    pL = cp.maximum((gamma - 1) * (EL - 0.5 * (mxL**2 + myL**2 + mzL**2) / rhoL), 1e-6)
+    pR = cp.maximum((gamma - 1) * (ER - 0.5 * (mxR**2 + myR**2 + mzR**2) / rhoR), 1e-6)
 
     f_mass, f_mx, f_my, f_mz, f_E = hlld_flux_1d(rhoL, rhoR, mxL, mxR, myL, myR, mzL, mzR, EL, ER, pL, pR, Bx[0])
 
@@ -133,7 +143,7 @@ for step in range(steps):
     E_total -= dt * (f_E - cp.roll(f_E, 1)) / dx
 
     # Primitive update
-    rho = cp.maximum(rho, rho_floor)
+    rho = cp.maximum(rho, 1e-4)
     vx = mx / rho
     vy = my / rho
     vz = mz / rho
