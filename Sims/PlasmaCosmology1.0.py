@@ -1,7 +1,7 @@
 import cupy as cp
 import numpy as np
 
-print("🌌 ALADIN Plasma Cosmology v1.0 — FULL SSP-RK3 + 3D HLLD (Clean & Fixed)")
+print("🌌 ALADIN Plasma Cosmology v1.0 — FULL SSP-RK3 + 3D HLLD (Fixed)")
 
 # ====================== PARAMETERS ======================
 N = 64
@@ -124,7 +124,7 @@ def hlld_flux_1d(rhoL, rhoR, uL, uR, vL, vR, wL, wR, EL, ER, pL, pR,
 
     return flux_mass, flux_mu, cp.zeros_like(vL), cp.zeros_like(wL), flux_energy
 
-# ====================== FULL RHS ======================
+# ====================== FULL RHS with x/y/z SWEEPS ======================
 def rhs(rho, mx, my, mz, E_total):
     vx = mx / rho
     vy = my / rho
@@ -146,9 +146,9 @@ def rhs(rho, mx, my, mz, E_total):
     mzL, mzR = reconstruct_plm(mz, 0)
     EL, ER = reconstruct_plm(E_total, 0)
     pL, pR = reconstruct_plm(p_thermal, 0)
-    uL = mxL / rhoL; uR = mxR / rhoL
-    vL = myL / rhoL; vR = myR / rhoL
-    wL = mzL / rhoL; wR = mzR / rhoL
+    uL = mxL / rhoL; uR = mxR / rhoR
+    vL = myL / rhoL; vR = myR / rhoR
+    wL = mzL / rhoL; wR = mzR / rhoR
     fm, fmx, _, _, fE = hlld_flux_1d(rhoL, rhoR, uL, uR, vL, vR, wL, wR, EL, ER, pL, pR, Bx, Bx, By, By, Bz, Bz)
     drho -= (fm - cp.roll(fm, 1, axis=0)) / dx
     dmx -= (fmx - cp.roll(fmx, 1, axis=0)) / dx
@@ -161,9 +161,9 @@ def rhs(rho, mx, my, mz, E_total):
     mzL, mzR = reconstruct_plm(mz, 1)
     EL, ER = reconstruct_plm(E_total, 1)
     pL, pR = reconstruct_plm(p_thermal, 1)
-    uL = myL / rhoL; uR = myR / rhoL
-    vL = mzL / rhoL; vR = mzR / rhoL
-    wL = mxL / rhoL; wR = mxR / rhoL
+    uL = myL / rhoL; uR = myR / rhoR
+    vL = mzL / rhoL; vR = mzR / rhoR
+    wL = mxL / rhoL; wR = mxR / rhoR
     fm, fmy, _, _, fE = hlld_flux_1d(rhoL, rhoR, uL, uR, vL, vR, wL, wR, EL, ER, pL, pR, By, By, Bz, Bz, Bx, Bx)
     drho -= (fm - cp.roll(fm, 1, axis=1)) / dx
     dmy -= (fmy - cp.roll(fmy, 1, axis=1)) / dx
@@ -176,9 +176,9 @@ def rhs(rho, mx, my, mz, E_total):
     mzL, mzR = reconstruct_plm(mz, 2)
     EL, ER = reconstruct_plm(E_total, 2)
     pL, pR = reconstruct_plm(p_thermal, 2)
-    uL = mzL / rhoL; uR = mzR / rhoL
-    vL = mxL / rhoL; vR = mxR / rhoL
-    wL = myL / rhoL; wR = myR / rhoL
+    uL = mzL / rhoL; uR = mzR / rhoR
+    vL = mxL / rhoL; vR = mxR / rhoR
+    wL = myL / rhoL; wR = myR / rhoR
     fm, fmz, _, _, fE = hlld_flux_1d(rhoL, rhoR, uL, uR, vL, vR, wL, wR, EL, ER, pL, pR, Bz, Bz, Bx, Bx, By, By)
     drho -= (fm - cp.roll(fm, 1, axis=2)) / dx
     dmz -= (fmz - cp.roll(fmz, 1, axis=2)) / dx
@@ -276,9 +276,9 @@ for step in range(steps):
         vmax = float(cp.nanmax(v))
         Bmax = float(cp.nanmax(cp.sqrt(Bx**2 + By**2 + Bz**2)))
 
-        mass_drift = 100.0 * (mass_now - mass0) / mass0
-        energy_drift = 100.0 * (E_now - E0) / E0
-        lz_drift = 100.0 * (Lz_now - Lz0) / Lz0
+        mass_drift = float(100.0 * (mass_now - mass0) / (mass0 + 1e-12))
+        energy_drift = float(100.0 * (E_now - E0) / (E0 + 1e-12))
+        lz_drift = float(100.0 * (Lz_now - Lz0) / (abs(Lz0) + 1e-12))
 
         print(f"Step {step:4d} | Bmax = {Bmax:.2f} μG | vmax = {vmax:.1f} km/s | divB = {div_max:.2e}")
         print(f"  Mass drift: {mass_drift:.4f}% | Energy drift: {energy_drift:.4f}% | Lz drift: {lz_drift:.4f}%")
