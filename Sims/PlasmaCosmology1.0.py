@@ -124,7 +124,7 @@ def hlld_flux_1d(rhoL, rhoR, uL, uR, vL, vR, wL, wR, EL, ER, pL, pR,
 
     return flux_mass, flux_mu, cp.zeros_like(vL), cp.zeros_like(wL), flux_energy
 
-# ====================== FULL RHS ======================
+# ====================== FULL RHS with x/y/z SWEEPS ======================
 def rhs(rho, mx, my, mz, E_total):
     vx = mx / rho
     vy = my / rho
