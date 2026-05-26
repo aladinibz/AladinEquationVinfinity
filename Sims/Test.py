@@ -1,7 +1,7 @@
 import cupy as cp
 import numpy as np
 
-print("🌌 ALADIN Plasma Cosmology v65.7 — FULL RawKernel EMF + Fixed Atomic + GLM")
+print("🌌 ALADIN Plasma Cosmology v65.8 — Fixed Shapes + RawKernel EMF")
 
 # ====================== PARAMETERS ======================
 N = 64
@@ -31,7 +31,7 @@ def nfw_enclosed_mass(r):
     xx = r / r_s + 1e-12
     return 4 * cp.pi * rho0_nfw * r_s**3 * (cp.log(1 + xx) - xx / (1 + xx))
 
-# ====================== FULL RAW KERNEL EMF ======================
+# ====================== RAW KERNEL EMF ======================
 emf_kernel_code = r'''
 extern "C" __global__
 void emf_ct_kernel(const float* __restrict__ vx,
@@ -46,7 +46,6 @@ void emf_ct_kernel(const float* __restrict__ vx,
                    float dt_over_dx, int N)
 {
     extern __shared__ float s_data[];
-
     float* s_vx = s_data;
     float* s_vy = s_vx + (blockDim.x+2)*(blockDim.y+2)*(blockDim.z+2);
     float* s_vz = s_vy + (blockDim.x+2)*(blockDim.y+2)*(blockDim.z+2);
@@ -96,15 +95,14 @@ void emf_ct_kernel(const float* __restrict__ vx,
 
         int idx = (i * N + j) * N + k;
 
-        // Atomic updates with correct Faraday signs
-        atomicAdd(&Bx[idx],  dt_over_dx * Ez);      // Bx contribution from Ez
-        atomicAdd(&Bx[idx], -dt_over_dx * Ey);      // Bx contribution from Ey
+        atomicAdd(&Bx[idx],  dt_over_dx * Ez);
+        atomicAdd(&Bx[idx], -dt_over_dx * Ey);
 
-        atomicAdd(&By[idx], -dt_over_dx * Ez);      // By contribution from Ez
-        atomicAdd(&By[idx],  dt_over_dx * Ex);      // By contribution from Ex
+        atomicAdd(&By[idx], -dt_over_dx * Ez);
+        atomicAdd(&By[idx],  dt_over_dx * Ex);
 
-        atomicAdd(&Bz[idx], -dt_over_dx * Ex);      // Bz contribution from Ex
-        atomicAdd(&Bz[idx],  dt_over_dx * Ey);      // Bz contribution from Ey
+        atomicAdd(&Bz[idx], -dt_over_dx * Ex);
+        atomicAdd(&Bz[idx],  dt_over_dx * Ey);
     }
 }
 '''
@@ -123,7 +121,7 @@ def update_B_ct(Bx, By, Bz, vx, vy, vz, dt):
     Bz = cp.clip(Bz, -30.0, 30.0)
     return Bx, By, Bz
 
-# ====================== GLM ======================
+# ====================== FIXED GLM (No Shape Error) ======================
 def apply_glm_cleaning(Bx, By, Bz, psi, dt):
     divB = cp.zeros((N, N, N), dtype=cp.float32)
     divB += (Bx[1:,:,:] - Bx[:-1,:,:]) / dx
@@ -133,9 +131,11 @@ def apply_glm_cleaning(Bx, By, Bz, psi, dt):
     psi -= dt * kappa * c_h * psi
     psi -= dt * (c_h ** 2) * divB
 
-    Bx[1:,:,:] -= dt * (psi[1:,:,:] - psi[:-1,:,:]) / dx
-    By[:,1:,:] -= dt * (psi[:,1:,:] - psi[:,:-1,:]) / dx
-    Bz[:,:,1:] -= dt * (psi[:,:,1:] - psi[:,:,:-1]) / dx
+    # Fixed staggered gradients
+    Bx[1:,:,:] -= dt * (psi - cp.roll(psi, 1, axis=0)) / dx
+    By[:,1:,:] -= dt * (psi - cp.roll(psi, 1, axis=1)) / dx
+    Bz[:,:,1:] -= dt * (psi - cp.roll(psi, 1, axis=2)) / dx
+
     return Bx, By, Bz, psi
 
 # ====================== FIELDS ======================
@@ -194,7 +194,7 @@ def compute_divB():
     div += (Bz[:,:,1:] - Bz[:,:,:-1]) / dx
     return div
 
-# ====================== MUSCL ======================
+# ====================== MUSCL + HLLD + RHS (unchanged) ======================
 def minmod(a, b):
     return cp.sign(a) * cp.minimum(cp.abs(a), cp.abs(b)) * (cp.sign(a) == cp.sign(b))
 
@@ -206,7 +206,6 @@ def reconstruct_plm(q, axis=0):
     qR = cp.roll(q, -1, axis=axis) - 0.5 * cp.roll(slope, -1, axis=axis)
     return qL, qR
 
-# ====================== HLLD ======================
 def hlld_flux_1d(rhoL, rhoR, mxL, mxR, myL, myR, mzL, mzR, EL, ER, pL, pR, B_normal, By_normal, Bz_normal):
     vxL = mxL / rhoL
     vxR = mxR / rhoR
@@ -257,7 +256,6 @@ def hlld_flux_1d(rhoL, rhoR, mxL, mxR, myL, myR, mzL, mzR, EL, ER, pL, pR, B_nor
 
     return flux_mass, flux_mx, flux_my, flux_mz, flux_energy
 
-# ====================== FIXED RHS ======================
 def rhs(rho, mx, my, mz, E_total):
     rho_safe = cp.maximum(rho, rho_floor)
     vx = mx / rho_safe
@@ -318,8 +316,8 @@ def rhs(rho, mx, my, mz, E_total):
 
     return drho, dmx, dmy, dmz, dE
 
-# ====================== MAIN SIMULATION ======================
-print("Starting v65.7 Full RawKernel...")
+# ====================== MAIN LOOP ======================
+print("Starting v65.8 ...")
 
 for step in range(steps):
     Bx_c, By_c, Bz_c = cell_center_B()
@@ -335,7 +333,6 @@ for step in range(steps):
     max_speed = float(cp.max(cp.sqrt(vx**2 + vy**2 + vz**2) + cf))
     dt = CFL * dx / (max_speed + 1e-8)
 
-    # SSP-RK3
     rho0 = rho.copy()
     mx0 = mx.copy()
     my0 = my.copy()
@@ -368,7 +365,6 @@ for step in range(steps):
     vy = my / rho
     vz = mz / rho
 
-    # RawKernel CT + GLM
     Bx, By, Bz = update_B_ct(Bx, By, Bz, vx, vy, vz, dt)
     Bx, By, Bz, psi = apply_glm_cleaning(Bx, By, Bz, psi, dt)
 
@@ -380,6 +376,6 @@ for step in range(steps):
         vmax = float(cp.max(cp.sqrt(vx**2 + vy**2 + vz**2)))
         Bmax = float(cp.nanmax(cp.sqrt(Bx_c**2 + By_c**2 + Bz_c**2)))
         print(f"Step {step:4d} | Bmax = {Bmax:.2f} | vmax = {vmax:.1f} | divB = {div_max:.2e}")
-        print(f"  Mass drift: {100*(mass_now-mass0)/mass0:.4f}% | Energy drift: {100*(E_now-E0)/E0:.4f}% | Lz drift: {100*(Lz_now-Lz0)/Lz0:.4f}%")
+        print(f"  Mass: {100*(mass_now-mass0)/mass0:.4f}% | Energy: {100*(E_now-E0)/E0:.4f}% | Lz: {100*(Lz_now-Lz0)/Lz0:.4f}%")
 
-print("\n✅ v65.7 Full RawKernel Simulation Finished!")
+print("\n✅ v65.8 Finished!")
