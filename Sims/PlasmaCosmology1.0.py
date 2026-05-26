@@ -189,6 +189,7 @@ def rhs(rho, mx, my, mz, E_total):
 print("Starting simulation...")
 
 for step in range(steps):
+    # Compute primitives and dt
     vx = mx / rho
     vy = my / rho
     vz = mz / rho
@@ -249,7 +250,7 @@ for step in range(steps):
     my = rho * vy
     mz = rho * vz
 
-    # Induction
+    # Induction (centered symmetric)
     vx_avg = 0.5 * (vx + cp.roll(vx, -1, axis=0))
     vy_avg = 0.5 * (vy + cp.roll(vy, -1, axis=1))
     vz_avg = 0.5 * (vz + cp.roll(vz, -1, axis=2))
@@ -275,10 +276,10 @@ for step in range(steps):
         div_max = float(cp.max(cp.abs(compute_divB())))
         vmax = float(cp.nanmax(v))
         Bmax = float(cp.nanmax(cp.sqrt(Bx**2 + By**2 + Bz**2)))
-        
-        mass_drift = 100 * (mass_now - mass0) / mass0
-        energy_drift = 100 * (E_now - E0) / E0
-        lz_drift = 100 * (Lz_now - Lz0) / Lz0
+
+        mass_drift = 100.0 * (mass_now - mass0) / mass0
+        energy_drift = 100.0 * (E_now - E0) / E0
+        lz_drift = 100.0 * (Lz_now - Lz0) / Lz0
 
         print(f"Step {step:4d} | Bmax = {Bmax:.2f} μG | vmax = {vmax:.1f} km/s | divB = {div_max:.2e}")
         print(f"  Mass drift: {mass_drift:.4f}% | Energy drift: {energy_drift:.4f}% | Lz drift: {lz_drift:.4f}%")
