@@ -189,7 +189,6 @@ def rhs(rho, mx, my, mz, E_total):
 print("Starting simulation...")
 
 for step in range(steps):
-    # Compute primitives and dt
     vx = mx / rho
     vy = my / rho
     vz = mz / rho
@@ -250,7 +249,7 @@ for step in range(steps):
     my = rho * vy
     mz = rho * vz
 
-    # Induction (centered symmetric)
+    # Induction
     vx_avg = 0.5 * (vx + cp.roll(vx, -1, axis=0))
     vy_avg = 0.5 * (vy + cp.roll(vy, -1, axis=1))
     vz_avg = 0.5 * (vz + cp.roll(vz, -1, axis=2))
