@@ -39,9 +39,10 @@ my = cp.zeros((N, N, N), dtype=cp.float32)
 mz = cp.zeros((N, N, N), dtype=cp.float32)
 E_total = cp.ones((N, N, N), dtype=cp.float32) * 1e-4
 
-Bx = cp.zeros((N, N, N), dtype=cp.float32) * 0.3
-By = cp.zeros((N, N, N), dtype=cp.float32) * 0.3
-Bz = cp.zeros((N, N, N), dtype=cp.float32) * 0.3
+# Proper B field initialization
+Bx = cp.ones((N, N, N), dtype=cp.float32) * 0.3
+By = cp.ones((N, N, N), dtype=cp.float32) * 0.3
+Bz = cp.ones((N, N, N), dtype=cp.float32) * 0.3
 psi = cp.zeros((N, N, N), dtype=cp.float32)
 
 r_cyl = cp.sqrt(X**2 + Y**2)
@@ -124,7 +125,7 @@ def hlld_flux_1d(rhoL, rhoR, uL, uR, vL, vR, wL, wR, EL, ER, pL, pR,
 
     return flux_mass, flux_mu, cp.zeros_like(vL), cp.zeros_like(wL), flux_energy
 
-# ====================== FULL RHS with x/y/z SWEEPS ======================
+# ====================== FULL RHS ======================
 def rhs(rho, mx, my, mz, E_total):
     vx = mx / rho
     vy = my / rho
@@ -201,33 +202,33 @@ for step in range(steps):
     local_dt = CFL * dx / (v_total + cf + 1e-8)
     dt = float(cp.min(local_dt))
 
-    # SSP-RK3
-    rho0 = rho.copy()
-    mx0 = mx.copy()
-    my0 = my.copy()
-    mz0 = mz.copy()
-    E0 = E_total.copy()
+    # SSP-RK3 with renamed variables to avoid overwriting E0
+    rho_rk = rho.copy()
+    mx_rk = mx.copy()
+    my_rk = my.copy()
+    mz_rk = mz.copy()
+    E_rk = E_total.copy()
 
-    drho, dmx, dmy, dmz, dE = rhs(rho0, mx0, my0, mz0, E0)
-    rho1 = rho0 + dt * drho
-    mx1 = mx0 + dt * dmx
-    my1 = my0 + dt * dmy
-    mz1 = mz0 + dt * dmz
-    E1 = E0 + dt * dE
+    drho, dmx, dmy, dmz, dE = rhs(rho_rk, mx_rk, my_rk, mz_rk, E_rk)
+    rho1 = rho_rk + dt * drho
+    mx1 = mx_rk + dt * dmx
+    my1 = my_rk + dt * dmy
+    mz1 = mz_rk + dt * dmz
+    E1 = E_rk + dt * dE
 
     drho, dmx, dmy, dmz, dE = rhs(rho1, mx1, my1, mz1, E1)
-    rho2 = (3*rho0 + rho1 + dt * drho) / 4
-    mx2 = (3*mx0 + mx1 + dt * dmx) / 4
-    my2 = (3*my0 + my1 + dt * dmy) / 4
-    mz2 = (3*mz0 + mz1 + dt * dmz) / 4
-    E2 = (3*E0 + E1 + dt * dE) / 4
+    rho2 = (3*rho_rk + rho1 + dt * drho) / 4
+    mx2 = (3*mx_rk + mx1 + dt * dmx) / 4
+    my2 = (3*my_rk + my1 + dt * dmy) / 4
+    mz2 = (3*mz_rk + mz1 + dt * dmz) / 4
+    E2 = (3*E_rk + E1 + dt * dE) / 4
 
     drho, dmx, dmy, dmz, dE = rhs(rho2, mx2, my2, mz2, E2)
-    rho = (rho0 + 2*rho2 + 2*dt * drho) / 3
-    mx = (mx0 + 2*mx2 + 2*dt * dmx) / 3
-    my = (my0 + 2*my2 + 2*dt * dmy) / 3
-    mz = (mz0 + 2*mz2 + 2*dt * dmz) / 3
-    E_total = (E0 + 2*E2 + 2*dt * dE) / 3
+    rho = (rho_rk + 2*rho2 + 2*dt * drho) / 3
+    mx = (mx_rk + 2*mx2 + 2*dt * dmx) / 3
+    my = (my_rk + 2*my2 + 2*dt * dmy) / 3
+    mz = (mz_rk + 2*mz2 + 2*dt * dmz) / 3
+    E_total = (E_rk + 2*E2 + 2*dt * dE) / 3
 
     # Floors and velocity cap
     rho = cp.maximum(rho, rho_floor)
