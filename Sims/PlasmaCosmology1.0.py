@@ -1,7 +1,7 @@
 import cupy as cp
 import numpy as np
 
-print("🌌 ALADIN Plasma Cosmology v1.0 — 128³ Stabilized (Energy Fixed)")
+print("🌌 ALADIN Plasma Cosmology v1.0 — 128³ Ultra-Stabilized")
 
 # ====================== PARAMETERS ======================
 N = 128
@@ -12,15 +12,15 @@ X, Y, Z = cp.meshgrid(x, y, z, indexing='ij')
 
 G = 4.302e-3
 gamma = 5.0 / 3.0
-CFL = 0.20
+CFL = 0.15           # More conservative
 steps = 500
-rho_floor = 1e-3
-p_floor = 1e-4
-internal_E_floor = 1e-4
-v_max_cap = 4.0
-v_phi_factor = 0.018
-c_h = 12.0
-kappa = 40.0
+rho_floor = 5e-3
+p_floor = 5e-4
+internal_E_floor = 5e-4
+v_max_cap = 3.5
+v_phi_factor = 0.015   # Reduced again
+c_h = 15.0
+kappa = 50.0
 
 # ====================== NFW ======================
 M_vir = 1.2e12
@@ -33,18 +33,18 @@ def nfw_enclosed_mass(r):
     return 4 * cp.pi * rho0_nfw * r_s**3 * (cp.log(1 + xx) - xx / (1 + xx))
 
 # ====================== FIELDS ======================
-rho = cp.maximum(cp.ones((N, N, N), dtype=cp.float32) * 1e-2, rho_floor)
+rho = cp.maximum(cp.ones((N, N, N), dtype=cp.float32) * 0.01, rho_floor)
 mx = cp.zeros((N, N, N), dtype=cp.float32)
 my = cp.zeros((N, N, N), dtype=cp.float32)
 mz = cp.zeros((N, N, N), dtype=cp.float32)
 
-Bx = cp.ones((N, N, N), dtype=cp.float32) * 0.3
-By = cp.ones((N, N, N), dtype=cp.float32) * 0.3
-Bz = cp.ones((N, N, N), dtype=cp.float32) * 0.3
+Bx = cp.ones((N, N, N), dtype=cp.float32) * 0.25
+By = cp.ones((N, N, N), dtype=cp.float32) * 0.25
+Bz = cp.ones((N, N, N), dtype=cp.float32) * 0.25
 psi = cp.zeros((N, N, N), dtype=cp.float32)
 
 r_cyl = cp.sqrt(X**2 + Y**2)
-rho *= cp.exp(-r_cyl / 8.0) * cp.exp(-Z**2 / 3.0)
+rho *= cp.exp(-r_cyl / 8.0) * cp.exp(-Z**2 / 4.0)
 rho = cp.maximum(rho, rho_floor)
 
 r3d = cp.sqrt(X**2 + Y**2 + Z**2 + 1e-12)
@@ -63,10 +63,10 @@ mx = rho * vx
 my = rho * vy
 mz = rho * vz
 
-# === PROPER ENERGY INITIALIZATION ===
+# Proper energy initialization
 E_kin = 0.5 * rho * (vx**2 + vy**2 + vz**2)
 E_mag = 0.5 * (Bx**2 + By**2 + Bz**2)
-internal_E0 = 5e-2
+internal_E0 = 0.08
 E_total = E_kin + E_mag + internal_E0
 
 mass0 = float(cp.sum(rho))
@@ -129,7 +129,7 @@ def hlld_flux_1d(rhoL, rhoR, uL, uR, vL, vR, wL, wR, EL, ER, pL, pR,
 
     return flux_mass, flux_mu, cp.zeros_like(vL), cp.zeros_like(wL), flux_energy
 
-# ====================== FULL RHS ======================
+# ====================== RHS ======================
 def rhs(rho, mx, my, mz, E_total):
     vx = mx / rho
     vy = my / rho
@@ -234,30 +234,26 @@ for step in range(steps):
     mz = (mz_rk + 2*mz2 + 2*dt * dmz) / 3
     E_total = (E_rk + 2*E2 + 2*dt * dE) / 3
 
-    # Strong floors
+    # Floors
     rho = cp.maximum(rho, rho_floor)
     E_kin = 0.5 * rho * (vx**2 + vy**2 + vz**2)
     E_mag = 0.5 * (Bx**2 + By**2 + Bz**2)
     internal_E = cp.maximum(E_total - E_kin - E_mag, internal_E_floor)
     E_total = E_kin + E_mag + internal_E
 
-    # Velocity cap + energy consistency
+    # Velocity cap
     v = cp.sqrt(vx**2 + vy**2 + vz**2)
     scale = cp.minimum(1.0, v_max_cap / (v + 1e-8))
-    vx *= scale
-    vy *= scale
-    vz *= scale
-    mx = rho * vx
-    my = rho * vy
-    mz = rho * vz
+    vx *= scale; vy *= scale; vz *= scale
+    mx = rho * vx; my = rho * vy; mz = rho * vz
 
-    # Recompute energy after velocity limiting
+    # Recompute energy
     E_kin = 0.5 * rho * (vx**2 + vy**2 + vz**2)
     E_mag = 0.5 * (Bx**2 + By**2 + Bz**2)
     internal_E = cp.maximum(E_total - E_kin - E_mag, internal_E_floor)
     E_total = E_kin + E_mag + internal_E
 
-    # Induction
+    # Induction + Dedner
     vx_avg = 0.5 * (vx + cp.roll(vx, -1, axis=0))
     vy_avg = 0.5 * (vy + cp.roll(vy, -1, axis=1))
     vz_avg = 0.5 * (vz + cp.roll(vz, -1, axis=2))
@@ -269,7 +265,6 @@ for step in range(steps):
     By += dt / dx * (vz_avg * Bx_avg - vx_avg * Bz_avg)
     Bz += dt / dx * (vx_avg * By_avg - vy_avg * Bx_avg)
 
-    # Dedner
     divB = compute_divB()
     psi -= dt * c_h**2 * divB - dt * kappa * psi
     Bx -= dt * (cp.roll(psi, -1, axis=0) - psi) / dx
