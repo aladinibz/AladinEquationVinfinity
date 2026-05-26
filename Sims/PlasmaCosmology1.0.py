@@ -1,10 +1,10 @@
 import cupy as cp
 import numpy as np
 
-print("🌌 ALADIN Plasma Cosmology v1.0 — FULL SSP-RK3 + 3D HLLD (Fixed)")
+print("🌌 ALADIN Plasma Cosmology v1.0 — 128³ Grid Version (Stabilized)")
 
 # ====================== PARAMETERS ======================
-N = 64
+N = 128                    # Increased resolution
 L = 60.0
 dx = L / N
 x = y = z = cp.linspace(-L/2, L/2, N, dtype=cp.float32)
@@ -12,15 +12,16 @@ X, Y, Z = cp.meshgrid(x, y, z, indexing='ij')
 
 G = 4.302e-3
 gamma = 5.0 / 3.0
-CFL = 0.35
+CFL = 0.25
 steps = 500
 rho_floor = 1e-4
-p_floor = 1e-6
-internal_E_floor = 1e-6
-v_max_cap = 8.0
-v_phi_factor = 0.055
-c_h = 8.0
-kappa = 25.0
+p_floor = 1e-5
+internal_E_floor = 1e-5
+v_max_cap = 5.0
+v_phi_factor = 0.025
+c_h = 10.0
+kappa = 30.0
+B_floor = 1e-4
 
 # ====================== NFW ======================
 M_vir = 1.2e12
@@ -37,9 +38,8 @@ rho = cp.maximum(cp.ones((N, N, N), dtype=cp.float32) * 1e-3, rho_floor)
 mx = cp.zeros((N, N, N), dtype=cp.float32)
 my = cp.zeros((N, N, N), dtype=cp.float32)
 mz = cp.zeros((N, N, N), dtype=cp.float32)
-E_total = cp.ones((N, N, N), dtype=cp.float32) * 1e-4
+E_total = cp.ones((N, N, N), dtype=cp.float32) * 1e-3
 
-# Proper B field initialization
 Bx = cp.ones((N, N, N), dtype=cp.float32) * 0.3
 By = cp.ones((N, N, N), dtype=cp.float32) * 0.3
 Bz = cp.ones((N, N, N), dtype=cp.float32) * 0.3
@@ -95,8 +95,8 @@ def hlld_flux_1d(rhoL, rhoR, uL, uR, vL, vR, wL, wR, EL, ER, pL, pR,
     cs2R = gamma * pR / rhoR
     ca2L = (BnL**2 + Bt1L**2 + Bt2L**2) / rhoL
     ca2R = (BnR**2 + Bt1R**2 + Bt2R**2) / rhoR
-    cfL = cp.sqrt(0.5 * (cs2L + ca2L + cp.sqrt((cs2L + ca2L)**2 - 4*cs2L*BnL**2/rhoL)))
-    cfR = cp.sqrt(0.5 * (cs2R + ca2R + cp.sqrt((cs2R + ca2R)**2 - 4*cs2R*BnR**2/rhoR)))
+    cfL = cp.sqrt(0.5 * (cs2L + ca2L + cp.sqrt((cs2L + ca2L)**2 - 4*cs2L*BnL**2/rhoL + 1e-12)))
+    cfR = cp.sqrt(0.5 * (cs2R + ca2R + cp.sqrt((cs2R + ca2R)**2 - 4*cs2R*BnR**2/rhoR + 1e-12)))
 
     SL = cp.minimum(0.0, cp.minimum(uL - cfL, uR - cfR))
     SR = cp.maximum(0.0, cp.maximum(uL + cfL, uR + cfR))
@@ -110,13 +110,13 @@ def hlld_flux_1d(rhoL, rhoR, uL, uR, vL, vR, wL, wR, EL, ER, pL, pR,
 
     flux_mass = cp.where(SL >= 0, rhoL * uL,
                 cp.where(SR <= 0, rhoR * uR,
-                cp.where(S_star >= 0, rhoL * (SL - uL) * S_star / (SL - S_star),
-                         rhoR * (SR - uR) * S_star / (SR - S_star))))
+                cp.where(S_star >= 0, rhoL * (SL - uL) * S_star / (SL - S_star + 1e-12),
+                         rhoR * (SR - uR) * S_star / (SR - S_star + 1e-12))))
 
     flux_mu = cp.where(SL >= 0, rhoL * uL**2 + p_tot_L - BnL**2,
                 cp.where(SR <= 0, rhoR * uR**2 + p_tot_R - BnR**2,
-                cp.where(S_star >= 0, rhoL * (SL - uL) * S_star**2 / (SL - S_star) + p_tot_L - BnL**2,
-                         rhoR * (SR - uR) * S_star**2 / (SR - S_star) + p_tot_R - BnR**2)))
+                cp.where(S_star >= 0, rhoL * (SL - uL) * S_star**2 / (SL - S_star + 1e-12) + p_tot_L - BnL**2,
+                         rhoR * (SR - uR) * S_star**2 / (SR - S_star + 1e-12) + p_tot_R - BnR**2)))
 
     flux_energy = cp.where(SL >= 0, energy_flux_L,
                     cp.where(SR <= 0, energy_flux_R,
@@ -187,7 +187,7 @@ def rhs(rho, mx, my, mz, E_total):
 
     return drho, dmx, dmy, dmz, dE
 
-print("Starting simulation...")
+print("Starting 128³ simulation... (this may take longer)")
 
 for step in range(steps):
     vx = mx / rho
@@ -202,7 +202,7 @@ for step in range(steps):
     local_dt = CFL * dx / (v_total + cf + 1e-8)
     dt = float(cp.min(local_dt))
 
-    # SSP-RK3 with renamed variables to avoid overwriting E0
+    # SSP-RK3
     rho_rk = rho.copy()
     mx_rk = mx.copy()
     my_rk = my.copy()
@@ -230,25 +230,25 @@ for step in range(steps):
     mz = (mz_rk + 2*mz2 + 2*dt * dmz) / 3
     E_total = (E_rk + 2*E2 + 2*dt * dE) / 3
 
-    # Floors and velocity cap
+    # Strong floors
     rho = cp.maximum(rho, rho_floor)
     E_kin = 0.5 * rho * (vx**2 + vy**2 + vz**2)
     E_mag = 0.5 * (Bx**2 + By**2 + Bz**2)
     internal_E = cp.maximum(E_total - E_kin - E_mag, internal_E_floor)
     E_total = E_kin + E_mag + internal_E
 
-    vx = mx / rho
-    vy = my / rho
-    vz = mz / rho
-
+    # Velocity cap
     v = cp.sqrt(vx**2 + vy**2 + vz**2)
     scale = cp.minimum(1.0, v_max_cap / (v + 1e-8))
-    vx *= scale
-    vy *= scale
-    vz *= scale
-    mx = rho * vx
-    my = rho * vy
-    mz = rho * vz
+    vx *= scale; vy *= scale; vz *= scale
+    mx = rho * vx; my = rho * vy; mz = rho * vz
+
+    # B floor
+    Bmag = cp.sqrt(Bx**2 + By**2 + Bz**2)
+    scaleB = cp.maximum(1.0, B_floor / (Bmag + 1e-12))
+    Bx *= scaleB
+    By *= scaleB
+    Bz *= scaleB
 
     # Induction
     vx_avg = 0.5 * (vx + cp.roll(vx, -1, axis=0))
@@ -284,4 +284,4 @@ for step in range(steps):
         print(f"Step {step:4d} | Bmax = {Bmax:.2f} μG | vmax = {vmax:.1f} km/s | divB = {div_max:.2e}")
         print(f"  Mass drift: {mass_drift:.4f}% | Energy drift: {energy_drift:.4f}% | Lz drift: {lz_drift:.4f}%")
 
-print("\n✅ v1.0 Complete!")
+print("\n✅ 128³ Simulation Complete!")
