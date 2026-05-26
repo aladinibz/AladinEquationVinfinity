@@ -1,7 +1,7 @@
 import cupy as cp
 import numpy as np
 
-print("🌌 ALADIN Plasma Cosmology v65.1 — Full SSP-RK3 + Optimized Kernel (Complete)")
+print("🌌 ALADIN Plasma Cosmology v65.2 — Fixed & Complete Version")
 
 # ====================== PARAMETERS ======================
 N = 64
@@ -87,7 +87,6 @@ mx = cp.zeros((N, N, N), dtype=cp.float32)
 my = cp.zeros((N, N, N), dtype=cp.float32)
 mz = cp.zeros((N, N, N), dtype=cp.float32)
 E_total = cp.ones((N, N, N), dtype=cp.float32) * 1e-4
-psi = cp.zeros((N, N, N), dtype=cp.float32)
 
 Bx = cp.zeros((N+1, N, N), dtype=cp.float32)
 By = cp.zeros((N, N+1, N), dtype=cp.float32)
@@ -202,14 +201,13 @@ def hlld_flux_1d(rhoL, rhoR, mxL, mxR, myL, myR, mzL, mzR, EL, ER, pL, pR, B_nor
 
     return flux_mass, flux_mx, flux_my, flux_mz, flux_energy
 
-# ====================== SSP-RK3 RHS with full sweeps ======================
+# ====================== SSP-RK3 RHS ======================
 def rhs(rho, mx, my, mz, E_total):
     Bx_c, By_c, Bz_c = cell_center_B()
     E_kin = 0.5 * rho * (vx**2 + vy**2 + vz**2)
     E_mag = 0.5 * (Bx_c**2 + By_c**2 + Bz_c**2)
     p_thermal = cp.maximum((gamma - 1.0) * (E_total - E_kin - E_mag), p_floor)
 
-    # Gravity
     dmx = rho * g_x
     dmy = rho * g_y
     dmz = rho * g_z
@@ -259,7 +257,7 @@ def rhs(rho, mx, my, mz, E_total):
 
     return drho, dmx, dmy, dmz, dE
 
-print("Starting v65.1 — Full Code with dt Fixed...")
+print("Starting simulation...")
 
 block = (16, 16, 4)
 grid = ((N + 15)//16, (N + 15)//16, (N + 3)//4)
@@ -271,10 +269,9 @@ for step in range(steps):
     E_mag = 0.5 * (Bx_c**2 + By_c**2 + Bz_c**2)
     p_thermal = cp.maximum((gamma - 1.0) * (E_total - E_kin - E_mag), p_floor)
 
-    # Adaptive dt
     cf = cp.sqrt(gamma * p_thermal / rho + (Bx_c**2 + By_c**2 + Bz_c**2) / rho)
-    max_speed = float(cp.max(cp.sqrt(vx**2 + vy**2 + vz**2) + cf))
-    dt = CFL * dx / (max_speed + 1e-8)
+    max_speed = float(cp.max(cp.sqrt(vx**2 + vy**2 + vz**2) + cf + 1e-8))
+    dt = CFL * dx / max_speed
 
     # SSP-RK3
     rho0 = rho.copy()
@@ -283,7 +280,6 @@ for step in range(steps):
     mz0 = mz.copy()
     E0 = E_total.copy()
 
-    # Stage 1
     drho, dmx, dmy, dmz, dE = rhs(rho0, mx0, my0, mz0, E0)
     rho1 = rho0 + dt * drho
     mx1 = mx0 + dt * dmx
@@ -291,7 +287,6 @@ for step in range(steps):
     mz1 = mz0 + dt * dmz
     E1 = E0 + dt * dE
 
-    # Stage 2
     drho, dmx, dmy, dmz, dE = rhs(rho1, mx1, my1, mz1, E1)
     rho2 = (3*rho0 + rho1 + dt * drho) / 4
     mx2 = (3*mx0 + mx1 + dt * dmx) / 4
@@ -299,7 +294,6 @@ for step in range(steps):
     mz2 = (3*mz0 + mz1 + dt * dmz) / 4
     E2 = (3*E0 + E1 + dt * dE) / 4
 
-    # Stage 3
     drho, dmx, dmy, dmz, dE = rhs(rho2, mx2, my2, mz2, E2)
     rho = (rho0 + 2*rho2 + 2*dt * drho) / 3
     mx = (mx0 + 2*mx2 + 2*dt * dmx) / 3
@@ -318,9 +312,10 @@ for step in range(steps):
         E_now = float(cp.sum(E_total))
         Lz_now = float(cp.sum(rho * (X*vy - Y*vx)))
         div_max = float(cp.max(cp.abs(compute_divB())))
-        vmax = float(cp.max(cp.sqrt(vx**2 + vy**2 + vz**2)))
+        vmax = float(cp.nanmax(cp.sqrt(vx**2 + vy**2 + vz**2)))
         Bmax = float(cp.nanmax(cp.sqrt(Bx_c**2 + By_c**2 + Bz_c**2)))
+
         print(f"Step {step:4d} | Bmax = {Bmax:.2f} μG | vmax = {vmax:.1f} km/s | divB = {div_max:.2e}")
         print(f"  Mass drift: {100*(mass_now-mass0)/mass0:.4f}% | Energy drift: {100*(E_now-E0)/E0:.4f}% | Lz drift: {100*(Lz_now-Lz0)/Lz0:.4f}%")
 
-print("\n✅ v65.1 Full Complete Code Finished!")
+print("\n✅ v65.1 Simulation Finished!")
