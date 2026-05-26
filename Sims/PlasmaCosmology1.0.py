@@ -189,7 +189,7 @@ def rhs(rho, mx, my, mz, E_total):
 print("Starting simulation...")
 
 for step in range(steps):
-    # Compute current primitives and dt
+    # Compute primitives and dt
     vx = mx / rho
     vy = my / rho
     vz = mz / rho
