@@ -1,7 +1,7 @@
 import cupy as cp
 import numpy as np
 
-print("🌌 ALADIN Plasma Cosmology v1.0 — FULL SSP-RK3 + 3D HLLD (Clean)")
+print("🌌 ALADIN Plasma Cosmology v1.0 — FULL SSP-RK3 + 3D HLLD (Clean & Fixed)")
 
 # ====================== PARAMETERS ======================
 N = 64
@@ -189,7 +189,7 @@ def rhs(rho, mx, my, mz, E_total):
 print("Starting simulation...")
 
 for step in range(steps):
-    # Compute dt based on current state
+    # Compute current primitives and dt
     vx = mx / rho
     vy = my / rho
     vz = mz / rho
@@ -209,7 +209,6 @@ for step in range(steps):
     mz0 = mz.copy()
     E0 = E_total.copy()
 
-    # Stage 1
     drho, dmx, dmy, dmz, dE = rhs(rho0, mx0, my0, mz0, E0)
     rho1 = rho0 + dt * drho
     mx1 = mx0 + dt * dmx
@@ -217,7 +216,6 @@ for step in range(steps):
     mz1 = mz0 + dt * dmz
     E1 = E0 + dt * dE
 
-    # Stage 2
     drho, dmx, dmy, dmz, dE = rhs(rho1, mx1, my1, mz1, E1)
     rho2 = (3*rho0 + rho1 + dt * drho) / 4
     mx2 = (3*mx0 + mx1 + dt * dmx) / 4
@@ -225,7 +223,6 @@ for step in range(steps):
     mz2 = (3*mz0 + mz1 + dt * dmz) / 4
     E2 = (3*E0 + E1 + dt * dE) / 4
 
-    # Stage 3
     drho, dmx, dmy, dmz, dE = rhs(rho2, mx2, my2, mz2, E2)
     rho = (rho0 + 2*rho2 + 2*dt * drho) / 3
     mx = (mx0 + 2*mx2 + 2*dt * dmx) / 3
@@ -282,4 +279,4 @@ for step in range(steps):
         print(f"Step {step:4d} | Bmax = {Bmax:.2f} μG | vmax = {vmax:.1f} km/s | divB = {div_max:.2e}")
         print(f"  Mass drift: {100*(mass_now-mass0)/mass0:.4f}% | Energy drift: {100*(E_now-E0)/E0:.4f}% | Lz drift: {100*(Lz_now-Lz0)/Lz0:.4f}%")
 
-print("\n✅ v1.0 Complete! dt is now properly defined inside the loop.")
+print("\n✅ v1.0 Complete!")
