@@ -43,8 +43,7 @@ By[NG:NG+N, NG:NG+N, NG:NG+N] = cp.asarray(np.random.randn(N, N, N) * pert, dtyp
 Bz[NG:NG+N, NG:NG+N, NG:NG+N] = cp.asarray(np.random.randn(N, N, N) * pert * 0.5 + 0.5, dtype=cp.float32)
 
 def update_ghosts():
-    """Correct periodic ghosts - using safe negative indexing"""
-    # Cell-centered fields
+    """Safe periodic ghosts"""
     for f in [rho, mx, my, mz, E_total]:
         f[:NG, :, :] = f[-2*NG:-NG, :, :]
         f[-NG:, :, :] = f[NG:2*NG, :, :]
@@ -53,29 +52,13 @@ def update_ghosts():
         f[:, :, :NG] = f[:, :, -2*NG:-NG]
         f[:, :, -NG:] = f[:, :, NG:2*NG]
 
-    # Bx (x-faces)
-    Bx[:NG, :, :] = Bx[-2*NG:-NG, :, :]
-    Bx[-NG:, :, :] = Bx[NG:2*NG, :, :]
-    Bx[:, :NG, :] = Bx[:, -2*NG:-NG, :]
-    Bx[:, -NG:, :] = Bx[:, NG:2*NG, :]
-    Bx[:, :, :NG] = Bx[:, :, -2*NG:-NG]
-    Bx[:, :, -NG:] = Bx[:, :, NG:2*NG]
-
-    # By (y-faces)
-    By[:NG, :, :] = By[-2*NG:-NG, :, :]
-    By[-NG:, :, :] = By[NG:2*NG, :, :]
-    By[:, :NG, :] = By[:, -2*NG:-NG, :]
-    By[:, -NG:, :] = By[:, NG:2*NG, :]
-    By[:, :, :NG] = By[:, :, -2*NG:-NG]
-    By[:, :, -NG:] = By[:, :, NG:2*NG]
-
-    # Bz (z-faces)
-    Bz[:NG, :, :] = Bz[-2*NG:-NG, :, :]
-    Bz[-NG:, :, :] = Bz[NG:2*NG, :, :]
-    Bz[:, :NG, :] = Bz[:, -2*NG:-NG, :]
-    Bz[:, -NG:, :] = Bz[:, NG:2*NG, :]
-    Bz[:, :, :NG] = Bz[:, :, -2*NG:-NG]
-    Bz[:, :, -NG:] = Bz[:, :, NG:2*NG]
+    for f in [Bx, By, Bz]:
+        f[:NG, :, :] = f[-2*NG:-NG, :, :]
+        f[-NG:, :, :] = f[NG:2*NG, :, :]
+        f[:, :NG, :] = f[:, -2*NG:-NG, :]
+        f[:, -NG:, :] = f[:, NG:2*NG, :]
+        f[:, :, :NG] = f[:, :, -2*NG:-NG]
+        f[:, :, -NG:] = f[:, :, NG:2*NG]
 
 def compute_divB():
     divB = ((Bx[1:,:,:] - Bx[:-1,:,:]) + 
@@ -83,7 +66,7 @@ def compute_divB():
             (Bz[:,:,1:] - Bz[:,:,:-1])) / dx
     return float(cp.mean(cp.abs(divB))), float(cp.max(cp.abs(divB)))
 
-# ====================== KERNEL ======================
+# ====================== FULL KERNEL ======================
 kernel = cp.RawKernel(r'''
 extern "C" __global__ void full_hlld_ct_yee(
     const float* rho, const float* mx, const float* my, const float* mz, const float* E_total,
@@ -95,11 +78,11 @@ extern "C" __global__ void full_hlld_ct_yee(
 {
     extern __shared__ float sdata[];
     int tx = threadIdx.x; int ty = threadIdx.y; int tz = threadIdx.z;
-    int i = blockIdx.x * blockDim.x + tx + NG;
-    int j = blockIdx.y * blockDim.y + ty + NG;
-    int k = blockIdx.z * blockDim.z + tz + NG;
+    int i = blockIdx.x * blockDim.x + tx + 3;
+    int j = blockIdx.y * blockDim.y + ty + 3;
+    int k = blockIdx.z * blockDim.z + tz + 3;
 
-    if (i >= Ni-NG || j >= Ni-NG || k >= Ni-NG) return;
+    if (i >= Ni-3 || j >= Ni-3 || k >= Ni-3) return;
 
     int txs = blockDim.x + 2; int tys = blockDim.y + 2; int tzs = blockDim.z + 2;
     int sidx = (tz + 1) * tys * txs + (ty + 1) * txs + (tx + 1);
@@ -289,4 +272,4 @@ while steps < max_steps:
         mean_divB, max_divB = compute_divB()
         print(f"Step {steps:4d} | Max|v| = {vmax:.4f} | mean|divB| = {mean_divB:.2e} | max|divB| = {max_divB:.2e}")
 
-print("\n✅ Simulation is running! Tell me the output bro.")
+print("\n✅ Running! Tell me the output.")
