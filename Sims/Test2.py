@@ -17,26 +17,30 @@ Bx = cp.zeros((N+1, N, N), dtype=cp.float32)
 By = cp.zeros((N, N+1, N), dtype=cp.float32)
 Bz = cp.zeros((N, N, N+1), dtype=cp.float32)
 
-# ====================== FIXED INITIAL CONDITION ======================
 np.random.seed(42)
 pert = 0.08
-
 Bx[1:-1] = cp.asarray(np.random.randn(N-1, N, N) * pert, dtype=cp.float32)
 By[:,1:-1] = cp.asarray(np.random.randn(N, N-1, N) * pert, dtype=cp.float32)
 Bz[:-1,:-1] = cp.asarray(np.random.randn(N-1, N-1, N+1) * pert * 0.5 + 0.5, dtype=cp.float32)
 
 print("✅ Shapes fixed:")
-print("Bx shape:", Bx.shape)
-print("By shape:", By.shape)
-print("Bz shape:", Bz.shape)
+print("Bx:", Bx.shape, "By:", By.shape, "Bz:", Bz.shape)
 
-# ====================== TEXTURE BINDING ======================
-tex_vx = cp.cuda.texture.Texture3D(mx / rho, cp.cuda.texture.ResampleMode.Point)
-tex_vy = cp.cuda.texture.Texture3D(my / rho, cp.cuda.texture.ResampleMode.Point)
-tex_vz = cp.cuda.texture.Texture3D(mz / rho, cp.cuda.texture.ResampleMode.Point)
+# ====================== TEXTURE BINDING (Correct CuPy way) ======================
+# Create Texture Objects properly
+def create_texture(arr):
+    desc = cp.cuda.texture.ResourceDescriptor(cp.cuda.texture.ResourceType.PITCH2D, arr)
+    tex_desc = cp.cuda.texture.TextureDescriptor(addressMode=cp.cuda.texture.AddressMode.Clamp,
+                                                 filterMode=cp.cuda.texture.FilterMode.Point,
+                                                 normalizedCoords=False)
+    return cp.cuda.texture.TextureObject(desc, tex_desc)
 
-tex_Bx = cp.cuda.texture.Texture3D(Bx, cp.cuda.texture.ResampleMode.Point)
-tex_By = cp.cuda.texture.Texture3D(By, cp.cuda.texture.ResampleMode.Point)
-tex_Bz = cp.cuda.texture.Texture3D(Bz, cp.cuda.texture.ResampleMode.Point)
+tex_vx = create_texture(mx / rho)
+tex_vy = create_texture(my / rho)
+tex_vz = create_texture(mz / rho)
 
-print("✅ Textures created successfully.")
+tex_Bx = create_texture(Bx)
+tex_By = create_texture(By)
+tex_Bz = create_texture(Bz)
+
+print("✅ Textures created successfully using correct CuPy API.")
