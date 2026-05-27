@@ -43,7 +43,7 @@ By[NG:NG+N, NG:NG+N, NG:NG+N] = cp.asarray(np.random.randn(N, N, N) * pert, dtyp
 Bz[NG:NG+N, NG:NG+N, NG:NG+N] = cp.asarray(np.random.randn(N, N, N) * pert * 0.5 + 0.5, dtype=cp.float32)
 
 def update_ghosts():
-    # Cell-centered fields (rho, m, E)
+    # Cell-centered fields
     for f in [rho, mx, my, mz, E_total]:
         f[0:NG, :, :] = f[Ni-NG:Ni, :, :]
         f[Ni:, :, :] = f[NG:2*NG, :, :]
@@ -52,7 +52,6 @@ def update_ghosts():
         f[:, :, 0:NG] = f[:, :, Ni-NG:Ni]
         f[:, :, Ni:] = f[:, :, NG:2*NG]
 
-    # Staggered B fields
     # Bx (Ni+1, Ni, Ni)
     Bx[0:NG, :, :] = Bx[Ni-NG:Ni, :, :]
     Bx[Ni:, :, :] = Bx[NG:2*NG, :, :]
@@ -83,7 +82,7 @@ def compute_divB():
             (Bz[:,:,1:] - Bz[:,:,:-1])) / dx
     return float(cp.mean(cp.abs(divB))), float(cp.max(cp.abs(divB)))
 
-# ====================== FULL KERNEL ======================
+# ====================== KERNEL ======================
 kernel = cp.RawKernel(r'''
 extern "C" __global__ void full_hlld_ct_yee(
     const float* rho, const float* mx, const float* my, const float* mz, const float* E_total,
@@ -116,7 +115,7 @@ extern "C" __global__ void full_hlld_ct_yee(
 
     if (tx == 0) s_vx[sidx-1] = mx[(i-1)*Ni*Ni + j*Ni + k] / rho[(i-1)*Ni*Ni + j*Ni + k];
     if (ty == 0) s_vy[sidx-txs] = my[i*Ni*Ni + (j-1)*Ni + k] / rho[i*Ni*Ni + (j-1)*Ni + k];
-    if (tz == 0) s_vz[sidx - tys*txs] = mz[i*Ni*Ni + j*Ni + (k-1)] / rho[i*Ni*Ni + j*Ni + (k-1)];
+    if (tz == 0) s_vz[sidx-tys*txs] = mz[i*Ni*Ni + j*Ni + (k-1)] / rho[i*Ni*Ni + j*Ni + (k-1)];
 
     __syncthreads();
 
@@ -160,7 +159,7 @@ extern "C" __global__ void full_hlld_ct_yee(
         Bz_out[i*Ni*Ni+j*Ni+k] = Bz_old[i*Ni*Ni+j*Ni+k] - dt_over_dx*(dEy_dx - dEx_dy);
     }
 
-    // Full HLLD (X-sweep)
+    // Full HLLD
     if (i < Ni && j < Ni && k < Ni) {
         int idx = i*Ni*Ni + j*Ni + k;
         int idx_l = (i-1)*Ni*Ni + j*Ni + k;
@@ -289,4 +288,4 @@ while steps < max_steps:
         mean_divB, max_divB = compute_divB()
         print(f"Step {steps:4d} | Max|v| = {vmax:.4f} | mean|divB| = {mean_divB:.2e} | max|divB| = {max_divB:.2e}")
 
-print("\n✅ Now running! Check the output.")
+print("\n✅ Simulation running! Let me know the output.")
