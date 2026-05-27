@@ -5,8 +5,8 @@ import cupy as cp
 N = 128
 L = 1.0
 dx = L / N
-dt = 0.00003
-max_steps = 1000
+dt = 0.000028
+max_steps = 800
 print_interval = 50
 NG = 3
 Ni = N + 2 * NG
@@ -43,39 +43,39 @@ By[NG:NG+N, NG:NG+N, NG:NG+N] = cp.asarray(np.random.randn(N, N, N) * pert, dtyp
 Bz[NG:NG+N, NG:NG+N, NG:NG+N] = cp.asarray(np.random.randn(N, N, N) * pert * 0.5 + 0.5, dtype=cp.float32)
 
 def update_ghosts():
-    # Cell-centered fields
+    # Cell-centered fields (rho, m, E)
     for f in [rho, mx, my, mz, E_total]:
-        f[0:NG,:,:] = f[Ni-NG:Ni,:,:]
-        f[Ni:,:,:] = f[NG:2*NG,:,:]
-        f[:,0:NG,:] = f[:,Ni-NG:Ni,:]
-        f[:,Ni:,:] = f[:,NG:2*NG,:]
-        f[:,:,0:NG] = f[:,:,Ni-NG:Ni]
-        f[:,:,Ni:] = f[:,:,NG:2*NG]
+        f[0:NG, :, :] = f[Ni-NG:Ni, :, :]
+        f[Ni:, :, :] = f[NG:2*NG, :, :]
+        f[:, 0:NG, :] = f[:, Ni-NG:Ni, :]
+        f[:, Ni:, :] = f[:, NG:2*NG, :]
+        f[:, :, 0:NG] = f[:, :, Ni-NG:Ni]
+        f[:, :, Ni:] = f[:, :, NG:2*NG]
 
-    # Staggered B fields - careful with shapes
+    # Staggered B fields
     # Bx (Ni+1, Ni, Ni)
-    Bx[0:NG,:,:] = Bx[Ni-NG:Ni,:,:]
-    Bx[Ni:,:,:] = Bx[NG:2*NG,:,:]
-    Bx[:,0:NG,:] = Bx[:,Ni-NG:Ni,:]
-    Bx[:,Ni:,:] = Bx[:,NG:2*NG,:]
-    Bx[:,:,0:NG] = Bx[:,:,Ni-NG:Ni]
-    Bx[:,:,Ni:] = Bx[:,:,NG:2*NG]
+    Bx[0:NG, :, :] = Bx[Ni-NG:Ni, :, :]
+    Bx[Ni:, :, :] = Bx[NG:2*NG, :, :]
+    Bx[:, 0:NG, :] = Bx[:, Ni-NG:Ni, :]
+    Bx[:, Ni:, :] = Bx[:, NG:2*NG, :]
+    Bx[:, :, 0:NG] = Bx[:, :, Ni-NG:Ni]
+    Bx[:, :, Ni:] = Bx[:, :, NG:2*NG]
 
     # By (Ni, Ni+1, Ni)
-    By[0:NG,:,:] = By[Ni-NG:Ni,:,:]
-    By[Ni:,:,:] = By[NG:2*NG,:,:]
-    By[:,0:NG,:] = By[:,Ni-NG:Ni,:]
-    By[:,Ni:,:] = By[:,NG:2*NG,:]
-    By[:,:,0:NG] = By[:,:,Ni-NG:Ni]
-    By[:,:,Ni:] = By[:,:,NG:2*NG]
+    By[0:NG, :, :] = By[Ni-NG:Ni, :, :]
+    By[Ni:, :, :] = By[NG:2*NG, :, :]
+    By[:, 0:NG, :] = By[:, Ni-NG:Ni, :]
+    By[:, Ni:, :] = By[:, NG:2*NG, :]
+    By[:, :, 0:NG] = By[:, :, Ni-NG:Ni]
+    By[:, :, Ni:] = By[:, :, NG:2*NG]
 
     # Bz (Ni, Ni, Ni+1)
-    Bz[0:NG,:,:] = Bz[Ni-NG:Ni,:,:]
-    Bz[Ni:,:,:] = Bz[NG:2*NG,:,:]
-    Bz[:,0:NG,:] = Bz[:,Ni-NG:Ni,:]
-    Bz[:,Ni:,:] = Bz[:,NG:2*NG,:]
-    Bz[:,:,0:NG] = Bz[:,:,Ni-NG:Ni]
-    Bz[:,:,Ni:] = Bz[:,:,NG:2*NG]
+    Bz[0:NG, :, :] = Bz[Ni-NG:Ni, :, :]
+    Bz[Ni:, :, :] = Bz[NG:2*NG, :, :]
+    Bz[:, 0:NG, :] = Bz[:, Ni-NG:Ni, :]
+    Bz[:, Ni:, :] = Bz[:, NG:2*NG, :]
+    Bz[:, :, 0:NG] = Bz[:, :, Ni-NG:Ni]
+    Bz[:, :, Ni:] = Bz[:, :, NG:2*NG]
 
 def compute_divB():
     divB = ((Bx[1:,:,:] - Bx[:-1,:,:]) + 
@@ -83,7 +83,7 @@ def compute_divB():
             (Bz[:,:,1:] - Bz[:,:,:-1])) / dx
     return float(cp.mean(cp.abs(divB))), float(cp.max(cp.abs(divB)))
 
-# ====================== FULL HLLD + TRUE CT YEE KERNEL ======================
+# ====================== FULL KERNEL ======================
 kernel = cp.RawKernel(r'''
 extern "C" __global__ void full_hlld_ct_yee(
     const float* rho, const float* mx, const float* my, const float* mz, const float* E_total,
@@ -114,9 +114,9 @@ extern "C" __global__ void full_hlld_ct_yee(
     s_vy[sidx] = my[idx] / rho[idx];
     s_vz[sidx] = mz[idx] / rho[idx];
 
-    if (tx == 0) s_vx[sidx-1] = mx[(i-1)*Ni*Ni+j*Ni+k] / rho[(i-1)*Ni*Ni+j*Ni+k];
-    if (ty == 0) s_vy[sidx-txs] = my[i*Ni*Ni+(j-1)*Ni+k] / rho[i*Ni*Ni+(j-1)*Ni+k];
-    if (tz == 0) s_vz[sidx-tys*txs] = mz[i*Ni*Ni+j*Ni+(k-1)] / rho[i*Ni*Ni+j*Ni+(k-1)];
+    if (tx == 0) s_vx[sidx-1] = mx[(i-1)*Ni*Ni + j*Ni + k] / rho[(i-1)*Ni*Ni + j*Ni + k];
+    if (ty == 0) s_vy[sidx-txs] = my[i*Ni*Ni + (j-1)*Ni + k] / rho[i*Ni*Ni + (j-1)*Ni + k];
+    if (tz == 0) s_vz[sidx - tys*txs] = mz[i*Ni*Ni + j*Ni + (k-1)] / rho[i*Ni*Ni + j*Ni + (k-1)];
 
     __syncthreads();
 
@@ -126,21 +126,21 @@ extern "C" __global__ void full_hlld_ct_yee(
         float vy_e = 0.25f*(s_vy[sidx]+s_vy[sidx+1]+s_vy[sidx+txs]+s_vy[sidx+txs+1]);
         float Bx_e = 0.5f*(Bx_old[(i+1)*Ni*Ni+j*Ni+k] + Bx_old[(i+1)*Ni*Ni+(j+1)*Ni+k]);
         float By_e = 0.5f*(By_old[i*Ni*Ni+(j+1)*Ni+k] + By_old[(i+1)*Ni*Ni+(j+1)*Ni+k]);
-        Emfz[i*Ni*Ni + j*Ni + k] = -(vx_e * By_e - vy_e * Bx_e);
+        Emfz[i*Ni*Ni + j*Ni + k] = -(vx_e*By_e - vy_e*Bx_e);
     }
     if (i < Ni-1 && k < Ni-1) {
         float vx_e = 0.25f*(s_vx[sidx]+s_vx[sidx+1]+s_vx[sidx+txs*tys]+s_vx[sidx+txs*tys+1]);
         float vz_e = 0.25f*(s_vz[sidx]+s_vz[sidx+1]+s_vz[sidx+txs*tys]+s_vz[sidx+txs*tys+1]);
         float Bx_e = 0.5f*(Bx_old[(i+1)*Ni*Ni+j*Ni+k] + Bx_old[(i+1)*Ni*Ni+j*Ni+(k+1)]);
         float Bz_e = 0.5f*(Bz_old[i*Ni*Ni+j*Ni+(k+1)] + Bz_old[(i+1)*Ni*Ni+j*Ni+(k+1)]);
-        Emfy[i*Ni*Ni + j*Ni + k] = -(vz_e * Bx_e - vx_e * Bz_e);
+        Emfy[i*Ni*Ni + j*Ni + k] = -(vz_e*Bx_e - vx_e*Bz_e);
     }
     if (j < Ni-1 && k < Ni-1) {
         float vy_e = 0.25f*(s_vy[sidx]+s_vy[sidx+txs]+s_vy[sidx+txs*tys]+s_vy[sidx+txs*tys+txs]);
         float vz_e = 0.25f*(s_vz[sidx]+s_vz[sidx+txs]+s_vz[sidx+txs*tys]+s_vz[sidx+txs*tys+txs]);
         float By_e = 0.5f*(By_old[i*Ni*Ni+(j+1)*Ni+k] + By_old[i*Ni*Ni+(j+1)*Ni+(k+1)]);
         float Bz_e = 0.5f*(Bz_old[i*Ni*Ni+j*Ni+(k+1)] + Bz_old[i*Ni*Ni+(j+1)*Ni+(k+1)]);
-        Emfx[i*Ni*Ni + j*Ni + k] = -(vy_e * Bz_e - vz_e * By_e);
+        Emfx[i*Ni*Ni + j*Ni + k] = -(vy_e*Bz_e - vz_e*By_e);
     }
 
     __syncthreads();
@@ -160,7 +160,7 @@ extern "C" __global__ void full_hlld_ct_yee(
         Bz_out[i*Ni*Ni+j*Ni+k] = Bz_old[i*Ni*Ni+j*Ni+k] - dt_over_dx*(dEy_dx - dEx_dy);
     }
 
-    // Full HLLD + JxB
+    // Full HLLD (X-sweep)
     if (i < Ni && j < Ni && k < Ni) {
         int idx = i*Ni*Ni + j*Ni + k;
         int idx_l = (i-1)*Ni*Ni + j*Ni + k;
@@ -248,11 +248,11 @@ extern "C" __global__ void full_hlld_ct_yee(
         E_out[idx] += dt_over_dx * work;
     }
 }
-''', 'full_hlld_ct_yee_kernel')
+''', 'full_hlld_ct_yee')
 
-print("✅ Full HLLD + True CT Yee ready!")
+print("✅ Kernel loaded!")
 
-# ====================== RUN ======================
+# ====================== LAUNCH ======================
 block = (16, 16, 4)
 grid = ((N + 15)//16, (N + 15)//16, (N + 3)//4)
 shared_bytes = 3 * (block[0]+2)*(block[1]+2)*(block[2]+2) * 4
@@ -289,4 +289,4 @@ while steps < max_steps:
         mean_divB, max_divB = compute_divB()
         print(f"Step {steps:4d} | Max|v| = {vmax:.4f} | mean|divB| = {mean_divB:.2e} | max|divB| = {max_divB:.2e}")
 
-print("\n✅ Simulation is now running! Tell me the output.")
+print("\n✅ Now running! Check the output.")
