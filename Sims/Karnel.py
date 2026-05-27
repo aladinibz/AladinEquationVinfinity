@@ -25,7 +25,7 @@ Bz[:-1,:-1] = cp.asarray(np.random.randn(N-1, N-1, N+1) * pert * 0.5 + 0.5, dtyp
 
 print("✅ Data initialized")
 
-# ====================== FULL RAW KERNEL (3 Edges + Halo) ======================
+# ====================== SAFER RAW KERNEL ======================
 raw_emf_kernel = cp.RawKernel(r'''
 extern "C" __global__ void raw_emf_kernel(
     const float* vx, const float* vy, const float* vz,
@@ -47,21 +47,19 @@ extern "C" __global__ void raw_emf_kernel(
 
     int txs = blockDim.x + 2;
     int tys = blockDim.y + 2;
-    int tzs = blockDim.z + 2;
-    int tile_vol = txs * tys * tzs;
 
     float* s_vx = sdata;
-    float* s_vy = sdata + tile_vol;
-    float* s_vz = sdata + 2 * tile_vol;
+    float* s_vy = sdata + txs * tys * (blockDim.z + 2);
+    float* s_vz = sdata + 2 * txs * tys * (blockDim.z + 2);
 
     int sidx = (tz * tys + ty) * txs + tx;
 
-    // Load main cell
+    // Safe main load
     s_vx[sidx] = vx[i*N*N + j*N + k];
     s_vy[sidx] = vy[i*N*N + j*N + k];
     s_vz[sidx] = vz[i*N*N + j*N + k];
 
-    // Halo loading
+    // Safe halo
     if (tx == 0 && i > 0) {
         s_vx[sidx-1] = vx[(i-1)*N*N + j*N + k];
         s_vy[sidx-1] = vy[(i-1)*N*N + j*N + k];
@@ -71,11 +69,6 @@ extern "C" __global__ void raw_emf_kernel(
         s_vx[sidx - txs] = vx[i*N*N + (j-1)*N + k];
         s_vy[sidx - txs] = vy[i*N*N + (j-1)*N + k];
         s_vz[sidx - txs] = vz[i*N*N + (j-1)*N + k];
-    }
-    if (tz == 0 && k > 0) {
-        s_vx[sidx - txs*tys] = vx[i*N*N + j*N + (k-1)];
-        s_vy[sidx - txs*tys] = vy[i*N*N + j*N + (k-1)];
-        s_vz[sidx - txs*tys] = vz[i*N*N + j*N + (k-1)];
     }
 
     __syncthreads();
@@ -92,7 +85,7 @@ extern "C" __global__ void raw_emf_kernel(
     }
 
     // ==================== EMF_y ====================
-    if (i < N-1 && j < N && k < N-1) {
+    if (i < N-1 && k < N-1) {
         float vx_edge = 0.25f * (s_vx[sidx] + s_vx[sidx+1] + s_vx[sidx + txs*tys] + s_vx[sidx + txs*tys + 1]);
         float vz_edge = 0.25f * (s_vz[sidx] + s_vz[sidx+1] + s_vz[sidx + txs*tys] + s_vz[sidx + txs*tys + 1]);
 
@@ -103,7 +96,7 @@ extern "C" __global__ void raw_emf_kernel(
     }
 
     // ==================== EMF_x ====================
-    if (i < N && j < N-1 && k < N-1) {
+    if (j < N-1 && k < N-1) {
         float vy_edge = 0.25f * (s_vy[sidx] + s_vy[sidx + txs] + s_vy[sidx + txs*tys] + s_vy[sidx + txs*tys + txs]);
         float vz_edge = 0.25f * (s_vz[sidx] + s_vz[sidx + txs] + s_vz[sidx + txs*tys] + s_vz[sidx + txs*tys + txs]);
 
@@ -115,30 +108,23 @@ extern "C" __global__ void raw_emf_kernel(
 }
 ''', 'raw_emf_kernel')
 
-print("✅ Full 3-edge Raw Kernel ready")
+print("✅ Full 3-edge Raw Kernel updated")
 
-# ====================== LAUNCH CONFIGURATION ======================
-block = (16, 16, 4)                          # Balanced for A100
-grid  = ((N + 15)//16, (N + 15)//16, (N + 3)//4)
+# ====================== LAUNCH ======================
+block = (16, 16, 4)
+grid = ((N + 15)//16, (N + 15)//16, (N + 3)//4)
 
-tile_x = block[0] + 2
-tile_y = block[1] + 2
-tile_z = block[2] + 2
-shared_bytes = 3 * tile_x * tile_y * tile_z * 4   # vx, vy, vz
+shared_bytes = 3 * (block[0]+2) * (block[1]+2) * (block[2]+2) * 4
 
-print(f"Launch → Grid {grid}, Block {block}, Shared Memory {shared_bytes} bytes")
-
-# Output arrays
 Emfx = cp.zeros((N, N+1, N+1), dtype=cp.float32)
 Emfy = cp.zeros((N+1, N, N+1), dtype=cp.float32)
 Emfz = cp.zeros((N+1, N+1, N), dtype=cp.float32)
 
-# ====================== LAUNCH ======================
 raw_emf_kernel(grid, block, 
                (mx/rho, my/rho, mz/rho, Bx, By, Bz, Emfx, Emfy, Emfz, N, dx),
                shared_mem=shared_bytes)
 
-print("✅ Kernel launched!")
-print(f"Emfz max abs = {cp.max(cp.abs(Emfz)):.6f}")
-print(f"Emfy max abs = {cp.max(cp.abs(Emfy)):.6f}")
-print(f"Emfx max abs = {cp.max(cp.abs(Emfx)):.6f}")
+print("✅ Kernel launched successfully!")
+print(f"Emfz max = {float(cp.max(cp.abs(Emfz))):.6f}")
+print(f"Emfy max = {float(cp.max(cp.abs(Emfy))):.6f}")
+print(f"Emfx max = {float(cp.max(cp.abs(Emfx))):.6f}")
