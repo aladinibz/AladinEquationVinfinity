@@ -1,3 +1,4 @@
+
 import numpy as np
 import cupy as cp
 
@@ -23,18 +24,29 @@ Bx[1:-1] = cp.asarray(np.random.randn(N-1, N, N) * pert, dtype=cp.float32)
 By[:,1:-1] = cp.asarray(np.random.randn(N, N-1, N) * pert, dtype=cp.float32)
 Bz[:-1,:-1] = cp.asarray(np.random.randn(N-1, N-1, N+1) * pert * 0.5 + 0.5, dtype=cp.float32)
 
-print("✅ Shapes fixed:")
-print("Bx:", Bx.shape, "By:", By.shape, "Bz:", Bz.shape)
+print("✅ Shapes OK")
 
-# ====================== TEXTURE BINDING (Correct CuPy way) ======================
-# Create Texture Objects properly
+# ====================== CORRECT TEXTURE BINDING ======================
 def create_texture(arr):
-    desc = cp.cuda.texture.ResourceDescriptor(cp.cuda.texture.ResourceType.PITCH2D, arr)
-    tex_desc = cp.cuda.texture.TextureDescriptor(addressMode=cp.cuda.texture.AddressMode.Clamp,
-                                                 filterMode=cp.cuda.texture.FilterMode.Point,
-                                                 normalizedCoords=False)
-    return cp.cuda.texture.TextureObject(desc, tex_desc)
+    # Create CUDA array
+    cuda_array = cp.cuda.texture.CUDAarray(arr, arr.shape, arr.dtype)
+    
+    # Resource Descriptor
+    res_desc = cp.cuda.texture.ResourceDescriptor(
+        cp.cuda.texture.ResourceType.CUDA_ARRAY,
+        cuArr=cuda_array
+    )
+    
+    # Texture Descriptor
+    tex_desc = cp.cuda.texture.TextureDescriptor(
+        addressMode=cp.cuda.texture.AddressMode.Clamp,
+        filterMode=cp.cuda.texture.FilterMode.Point,
+        normalizedCoords=False
+    )
+    
+    return cp.cuda.texture.TextureObject(res_desc, tex_desc)
 
+# Create textures
 tex_vx = create_texture(mx / rho)
 tex_vy = create_texture(my / rho)
 tex_vz = create_texture(mz / rho)
@@ -43,4 +55,4 @@ tex_Bx = create_texture(Bx)
 tex_By = create_texture(By)
 tex_Bz = create_texture(Bz)
 
-print("✅ Textures created successfully using correct CuPy API.")
+print("✅ Textures created successfully with correct CuPy syntax!")
