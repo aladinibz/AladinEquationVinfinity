@@ -51,14 +51,12 @@ X, Y = cp.meshgrid(x, y)
 R = cp.sqrt(X**2 + Y**2)
 R = cp.maximum(R, 0.2)
 v_theta = 0.18 * R / (R + 0.4)
+theta = cp.arctan2(Y, X)
+vx_seed = v_theta * (-cp.sin(theta)) * 0.35
+vy_seed = v_theta * cp.cos(theta) * 0.35
 
-for ii in range(N):
-    for jj in range(N):
-        idx = NG + ii
-        jdx = NG + jj
-        theta = np.arctan2(Y[ii,jj].get(), X[ii,jj].get())
-        mx[idx, jdx, NG:Ni-NG] += (v_theta[ii,jj] * (-np.sin(theta)) * 0.35).get()
-        my[idx, jdx, NG:Ni-NG] += (v_theta[ii,jj] * np.cos(theta) * 0.35).get()
+mx[NG:NG+N, NG:NG+N, NG:Ni-NG] += vx_seed
+my[NG:NG+N, NG:NG+N, NG:Ni-NG] += vy_seed
 
 def update_ghosts():
     for f in [rho, mx, my, mz, E_total]:
@@ -85,7 +83,6 @@ def compute_divB():
 
 # ====================== KERNELS ======================
 
-# 1. CT EMF
 ct_emf_kernel = cp.RawKernel(r'''
 #define NG 3
 extern "C" __global__ void ct_emf_kernel(
@@ -139,7 +136,6 @@ extern "C" __global__ void ct_emf_kernel(
 }
 ''', 'ct_emf_kernel')
 
-# 2. CT Curl
 ct_curl_kernel = cp.RawKernel(r'''
 #define NG 3
 extern "C" __global__ void ct_curl_kernel(
@@ -168,7 +164,7 @@ extern "C" __global__ void ct_curl_kernel(
 }
 ''', 'ct_curl_kernel')
 
-# 3. HLLD X
+# HLLD X
 hlld_x_kernel = cp.RawKernel(r'''
 #define NG 3
 extern "C" __global__ void hlld_x_kernel(
@@ -248,7 +244,7 @@ extern "C" __global__ void hlld_x_kernel(
 }
 ''', 'hlld_x_kernel')
 
-# 4. HLLD Y
+# HLLD Y
 hlld_y_kernel = cp.RawKernel(r'''
 #define NG 3
 extern "C" __global__ void hlld_y_kernel(
@@ -328,7 +324,7 @@ extern "C" __global__ void hlld_y_kernel(
 }
 ''', 'hlld_y_kernel')
 
-# 5. HLLD Z
+# HLLD Z
 hlld_z_kernel = cp.RawKernel(r'''
 #define NG 3
 extern "C" __global__ void hlld_z_kernel(
@@ -408,7 +404,7 @@ extern "C" __global__ void hlld_z_kernel(
 }
 ''', 'hlld_z_kernel')
 
-# 6. JxB
+# JxB Kernel
 jxb_kernel = cp.RawKernel(r'''
 #define NG 3
 extern "C" __global__ void jxb_kernel(
@@ -445,7 +441,7 @@ extern "C" __global__ void jxb_kernel(
 }
 ''', 'jxb_kernel')
 
-print("✅ All kernels loaded with full HLLD X/Y/Z!")
+print("✅ All kernels loaded!")
 
 # ====================== MAIN LOOP ======================
 block = (8, 8, 2)
@@ -478,7 +474,13 @@ while steps < max_steps:
 
     update_ghosts()
 
-    # Stage 2 (repeat with buffer 2 - same pattern as stage 1 but using *1 to *2)
+    # Stage 2
+    ct_emf_kernel(grid, block, (rho1, mx1, my1, mz1, Bx1, By1, Bz1, Emfx, Emfy, Emfz, Ni), shared_mem=3*(8+2)*(8+2)*(2+2)*4)
+    ct_curl_kernel(grid, block, (Emfx, Emfy, Emfz, Bx1, By1, Bz1, Bx2, By2, Bz2, Ni, dt_over_dx))
+    hlld_x_kernel(grid, block, (rho1, mx1, my1, mz1, E1, Bx1, By1, Bz1, rho2, mx2, my2, mz2, E2, Ni, dx, dt_over_dx, gamma))
+    hlld_y_kernel(grid, block, (rho1, mx1, my1, mz1, E1, Bx1, By1, Bz1, rho2, mx2, my2, mz2, E2, Ni, dx, dt_over_dx, gamma))
+    hlld_z_kernel(grid, block, (rho1, mx1, my1, mz1, E1, Bx1, By1, Bz1, rho2, mx2, my2, mz2, E2, Ni, dx, dt_over_dx, gamma))
+    jxb_kernel(grid, block, (rho1, mx1, my1, mz1, Bx1, By1, Bz1, mx2, my2, mz2, E2, Ni, dx, dt_over_dx))
 
     # SSP-RK2 in-place
     rho *= 0.5; rho += 0.5*rho2
@@ -492,8 +494,8 @@ while steps < max_steps:
 
     steps += 1
     if steps % print_interval == 0:
-        vmax = float(cp.max(cp.sqrt(v2)))
+        vmax = float(cp.max(cp.sqrt((mx/rho)**2 + (my/rho)**2 + (mz/rho)**2)))
         mean_divB, max_divB = compute_divB()
         print(f"Step {steps:4d} | dt={dt:.2e} | Max|v|={vmax:.4f} | mean|divB|={mean_divB:.2e} | max|divB|={max_divB:.2e}")
 
-print("\n✅ Full directional split HLLD (X+Y+Z) + True CT Yee completed!")
+print("\n✅ Full code with HLLD X+Y+Z completed!")
