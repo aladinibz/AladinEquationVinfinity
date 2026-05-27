@@ -5,8 +5,8 @@ import cupy as cp
 N = 128
 L = 1.0
 dx = L / N
-dt = 0.000025          # Reduced for stability
-max_steps = 1000
+dt = 0.000025
+max_steps = 800
 print_interval = 50
 NG = 3
 Ni = N + 2 * NG
@@ -24,14 +24,12 @@ By = cp.zeros((Ni, Ni+1, Ni), dtype=cp.float32)
 Bz = cp.zeros((Ni, Ni, Ni+1), dtype=cp.float32)
 
 # RK2 buffers
-rho1 = cp.zeros_like(rho); mx1 = cp.zeros_like(mx)
-my1 = cp.zeros_like(my); mz1 = cp.zeros_like(mz)
-E1 = cp.zeros_like(E_total)
+rho1 = cp.zeros_like(rho); mx1 = cp.zeros_like(mx); my1 = cp.zeros_like(my)
+mz1 = cp.zeros_like(mz); E1 = cp.zeros_like(E_total)
 Bx1 = cp.zeros_like(Bx); By1 = cp.zeros_like(By); Bz1 = cp.zeros_like(Bz)
 
-rho2 = cp.zeros_like(rho); mx2 = cp.zeros_like(mx)
-my2 = cp.zeros_like(my); mz2 = cp.zeros_like(mz)
-E2 = cp.zeros_like(E_total)
+rho2 = cp.zeros_like(rho); mx2 = cp.zeros_like(mx); my2 = cp.zeros_like(my)
+mz2 = cp.zeros_like(mz); E2 = cp.zeros_like(E_total)
 Bx2 = cp.zeros_like(Bx); By2 = cp.zeros_like(By); Bz2 = cp.zeros_like(Bz)
 
 Emfx = cp.zeros((Ni, Ni+1, Ni+1), dtype=cp.float32)
@@ -45,10 +43,9 @@ By[NG:NG+N, NG:NG+N, NG:NG+N] = cp.asarray(np.random.randn(N, N, N) * pert, dtyp
 Bz[NG:NG+N, NG:NG+N, NG:NG+N] = cp.asarray(np.random.randn(N, N, N) * pert * 0.5 + 0.5, dtype=cp.float32)
 
 def update_ghosts():
-    """Perfect ghost handling for cell-centered + staggered fields"""
+    """Robust periodic ghosts for cell-centered + staggered fields"""
     # Cell-centered fields
-    fields = [rho, mx, my, mz, E_total]
-    for f in fields:
+    for f in [rho, mx, my, mz, E_total]:
         f[:NG, :, :] = f[Ni-NG:Ni, :, :]
         f[Ni:, :, :] = f[NG:2*NG, :, :]
         f[:, :NG, :] = f[:, Ni-NG:Ni, :]
@@ -56,8 +53,7 @@ def update_ghosts():
         f[:, :, :NG] = f[:, :, Ni-NG:Ni]
         f[:, :, Ni:] = f[:, :, NG:2*NG]
 
-    # Staggered magnetic fields
-    # Bx (Ni+1, Ni, Ni)
+    # Bx (Ni+1, Ni, Ni) - x-faces
     Bx[:NG, :, :] = Bx[Ni-NG:Ni, :, :]
     Bx[Ni:, :, :] = Bx[NG:2*NG, :, :]
     Bx[:, :NG, :] = Bx[:, Ni-NG:Ni, :]
@@ -65,7 +61,7 @@ def update_ghosts():
     Bx[:, :, :NG] = Bx[:, :, Ni-NG:Ni]
     Bx[:, :, Ni:] = Bx[:, :, NG:2*NG]
 
-    # By (Ni, Ni+1, Ni)
+    # By (Ni, Ni+1, Ni) - y-faces
     By[:NG, :, :] = By[Ni-NG:Ni, :, :]
     By[Ni:, :, :] = By[NG:2*NG, :, :]
     By[:, :NG, :] = By[:, Ni-NG:Ni, :]
@@ -73,7 +69,7 @@ def update_ghosts():
     By[:, :, :NG] = By[:, :, Ni-NG:Ni]
     By[:, :, Ni:] = By[:, :, NG:2*NG]
 
-    # Bz (Ni, Ni, Ni+1)
+    # Bz (Ni, Ni, Ni+1) - z-faces
     Bz[:NG, :, :] = Bz[Ni-NG:Ni, :, :]
     Bz[Ni:, :, :] = Bz[NG:2*NG, :, :]
     Bz[:, :NG, :] = Bz[:, Ni-NG:Ni, :]
@@ -82,8 +78,8 @@ def update_ghosts():
     Bz[:, :, Ni:] = Bz[:, :, NG:2*NG]
 
 def compute_divB():
-    divB = ((Bx[1:,:,:] - Bx[:-1,:,:]) +
-            (By[:,1:,:] - By[:,:-1,:]) +
+    divB = ((Bx[1:,:,:] - Bx[:-1,:,:]) + 
+            (By[:,1:,:] - By[:,:-1,:]) + 
             (Bz[:,:,1:] - Bz[:,:,:-1])) / dx
     return float(cp.mean(cp.abs(divB))), float(cp.max(cp.abs(divB)))
 
@@ -124,7 +120,7 @@ extern "C" __global__ void full_hlld_ct_yee(
 
     __syncthreads();
 
-    // True CT Yee EMFs (edge-centered)
+    // True CT Yee EMFs
     if (i < Ni-1 && j < Ni-1 && k < Ni) {
         float vx_e = 0.25f*(s_vx[sidx]+s_vx[sidx+1]+s_vx[sidx+txs]+s_vx[sidx+txs+1]);
         float vy_e = 0.25f*(s_vy[sidx]+s_vy[sidx+1]+s_vy[sidx+txs]+s_vy[sidx+txs+1]);
@@ -149,7 +145,7 @@ extern "C" __global__ void full_hlld_ct_yee(
 
     __syncthreads();
 
-    // Strict True CT Yee curl update
+    // Strict True CT Yee curl
     if (i < Ni && j < Ni && k < Ni) {
         float dEz_dy = Emfz[i*Ni*Ni+(j+1)*Ni+k] - Emfz[i*Ni*Ni+j*Ni+k];
         float dEy_dz = Emfy[i*Ni*Ni+j*Ni+(k+1)] - Emfy[i*Ni*Ni+j*Ni+k];
@@ -164,7 +160,7 @@ extern "C" __global__ void full_hlld_ct_yee(
         Bz_out[i*Ni*Ni+j*Ni+k] = Bz_old[i*Ni*Ni+j*Ni+k] - dt_over_dx*(dEy_dx - dEx_dy);
     }
 
-    // Full HLLD Riemann Solver (X-direction) + JxB
+    // Full HLLD + JxB
     if (i < Ni && j < Ni && k < Ni) {
         int idx = i*Ni*Ni + j*Ni + k;
         int idx_l = (i-1)*Ni*Ni + j*Ni + k;
@@ -232,7 +228,7 @@ extern "C" __global__ void full_hlld_ct_yee(
         mz_out[idx] = mz[idx] - dt_over_dx * flux_mz;
         E_out[idx] = E_total[idx] - dt_over_dx * flux_E;
 
-        // JxB Lorentz force
+        // JxB
         float Jx = (By_old[i*Ni*Ni+(j+1)*Ni+k] - By_old[i*Ni*Ni+j*Ni+k])/dx - (Bz_old[i*Ni*Ni+j*Ni+(k+1)] - Bz_old[i*Ni*Ni+j*Ni+k])/dx;
         float Jy = (Bz_old[i*Ni*Ni+j*Ni+(k+1)] - Bz_old[i*Ni*Ni+j*Ni+k])/dx - (Bx_old[(i+1)*Ni*Ni+j*Ni+k] - Bx_old[i*Ni*Ni+j*Ni+k])/dx;
         float Jz = (Bx_old[(i+1)*Ni*Ni+j*Ni+k] - Bx_old[i*Ni*Ni+j*Ni+k])/dx - (By_old[i*Ni*Ni+(j+1)*Ni+k] - By_old[i*Ni*Ni+j*Ni+k])/dx;
@@ -254,7 +250,7 @@ extern "C" __global__ void full_hlld_ct_yee(
 }
 ''', 'full_hlld_ct_yee')
 
-print("✅ Clean Full HLLD + True CT Yee kernel loaded!")
+print("✅ Kernel loaded!")
 
 # ====================== LAUNCH ======================
 block = (16, 16, 4)
@@ -293,4 +289,4 @@ while steps < max_steps:
         mean_divB, max_divB = compute_divB()
         print(f"Step {steps:4d} | Max|v| = {vmax:.4f} | mean|divB| = {mean_divB:.2e} | max|divB| = {max_divB:.2e}")
 
-print("\n✅ Clean version running! Check divB stability.")
+print("\n✅ Now running! Report the output bro.")
