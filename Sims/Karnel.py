@@ -43,39 +43,39 @@ By[NG:NG+N, NG:NG+N, NG:NG+N] = cp.asarray(np.random.randn(N, N, N) * pert, dtyp
 Bz[NG:NG+N, NG:NG+N, NG:NG+N] = cp.asarray(np.random.randn(N, N, N) * pert * 0.5 + 0.5, dtype=cp.float32)
 
 def update_ghosts():
-    """Safe periodic ghosts for cell-centered and staggered fields"""
-    # Cell-centered
+    """Correct periodic ghosts - using safe negative indexing"""
+    # Cell-centered fields
     for f in [rho, mx, my, mz, E_total]:
-        f[:NG, :, :] = f[Ni-NG:Ni, :, :]
-        f[Ni:, :, :] = f[NG:NG+NG, :, :]
-        f[:, :NG, :] = f[:, Ni-NG:Ni, :]
-        f[:, Ni:, :] = f[:, NG:NG+NG, :]
-        f[:, :, :NG] = f[:, :, Ni-NG:Ni]
-        f[:, :, Ni:] = f[:, :, NG:NG+NG]
+        f[:NG, :, :] = f[-2*NG:-NG, :, :]
+        f[-NG:, :, :] = f[NG:2*NG, :, :]
+        f[:, :NG, :] = f[:, -2*NG:-NG, :]
+        f[:, -NG:, :] = f[:, NG:2*NG, :]
+        f[:, :, :NG] = f[:, :, -2*NG:-NG]
+        f[:, :, -NG:] = f[:, :, NG:2*NG]
 
     # Bx (x-faces)
-    Bx[:NG, :, :] = Bx[Ni-NG:Ni, :, :]
-    Bx[Ni:, :, :] = Bx[NG:NG+NG, :, :]
-    Bx[:, :NG, :] = Bx[:, Ni-NG:Ni, :]
-    Bx[:, Ni:, :] = Bx[:, NG:NG+NG, :]
-    Bx[:, :, :NG] = Bx[:, :, Ni-NG:Ni]
-    Bx[:, :, Ni:] = Bx[:, :, NG:NG+NG]
+    Bx[:NG, :, :] = Bx[-2*NG:-NG, :, :]
+    Bx[-NG:, :, :] = Bx[NG:2*NG, :, :]
+    Bx[:, :NG, :] = Bx[:, -2*NG:-NG, :]
+    Bx[:, -NG:, :] = Bx[:, NG:2*NG, :]
+    Bx[:, :, :NG] = Bx[:, :, -2*NG:-NG]
+    Bx[:, :, -NG:] = Bx[:, :, NG:2*NG]
 
     # By (y-faces)
-    By[:NG, :, :] = By[Ni-NG:Ni, :, :]
-    By[Ni:, :, :] = By[NG:NG+NG, :, :]
-    By[:, :NG, :] = By[:, Ni-NG:Ni, :]
-    By[:, Ni:, :] = By[:, NG:NG+NG, :]
-    By[:, :, :NG] = By[:, :, Ni-NG:Ni]
-    By[:, :, Ni:] = By[:, :, NG:NG+NG]
+    By[:NG, :, :] = By[-2*NG:-NG, :, :]
+    By[-NG:, :, :] = By[NG:2*NG, :, :]
+    By[:, :NG, :] = By[:, -2*NG:-NG, :]
+    By[:, -NG:, :] = By[:, NG:2*NG, :]
+    By[:, :, :NG] = By[:, :, -2*NG:-NG]
+    By[:, :, -NG:] = By[:, :, NG:2*NG]
 
     # Bz (z-faces)
-    Bz[:NG, :, :] = Bz[Ni-NG:Ni, :, :]
-    Bz[Ni:, :, :] = Bz[NG:NG+NG, :, :]
-    Bz[:, :NG, :] = Bz[:, Ni-NG:Ni, :]
-    Bz[:, Ni:, :] = Bz[:, NG:NG+NG, :]
-    Bz[:, :, :NG] = Bz[:, :, Ni-NG:Ni]
-    Bz[:, :, Ni:] = Bz[:, :, NG:NG+NG]
+    Bz[:NG, :, :] = Bz[-2*NG:-NG, :, :]
+    Bz[-NG:, :, :] = Bz[NG:2*NG, :, :]
+    Bz[:, :NG, :] = Bz[:, -2*NG:-NG, :]
+    Bz[:, -NG:, :] = Bz[:, NG:2*NG, :]
+    Bz[:, :, :NG] = Bz[:, :, -2*NG:-NG]
+    Bz[:, :, -NG:] = Bz[:, :, NG:2*NG]
 
 def compute_divB():
     divB = ((Bx[1:,:,:] - Bx[:-1,:,:]) + 
@@ -95,11 +95,11 @@ extern "C" __global__ void full_hlld_ct_yee(
 {
     extern __shared__ float sdata[];
     int tx = threadIdx.x; int ty = threadIdx.y; int tz = threadIdx.z;
-    int i = blockIdx.x * blockDim.x + tx + 3;
-    int j = blockIdx.y * blockDim.y + ty + 3;
-    int k = blockIdx.z * blockDim.z + tz + 3;
+    int i = blockIdx.x * blockDim.x + tx + NG;
+    int j = blockIdx.y * blockDim.y + ty + NG;
+    int k = blockIdx.z * blockDim.z + tz + NG;
 
-    if (i >= Ni-3 || j >= Ni-3 || k >= Ni-3) return;
+    if (i >= Ni-NG || j >= Ni-NG || k >= Ni-NG) return;
 
     int txs = blockDim.x + 2; int tys = blockDim.y + 2; int tzs = blockDim.z + 2;
     int sidx = (tz + 1) * tys * txs + (ty + 1) * txs + (tx + 1);
@@ -289,4 +289,4 @@ while steps < max_steps:
         mean_divB, max_divB = compute_divB()
         print(f"Step {steps:4d} | Max|v| = {vmax:.4f} | mean|divB| = {mean_divB:.2e} | max|divB| = {max_divB:.2e}")
 
-print("\n✅ Running! Tell me the output.")
+print("\n✅ Simulation is running! Tell me the output bro.")
