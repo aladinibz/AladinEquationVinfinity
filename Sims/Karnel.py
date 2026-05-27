@@ -66,8 +66,10 @@ def compute_divB():
             (Bz[:,:,1:] - Bz[:,:,:-1])) / dx
     return float(cp.mean(cp.abs(divB))), float(cp.max(cp.abs(divB)))
 
-# ====================== FULL KERNEL ======================
+# ====================== KERNEL ======================
 kernel = cp.RawKernel(r'''
+#define NG 3
+
 extern "C" __global__ void full_hlld_ct_yee(
     const float* rho, const float* mx, const float* my, const float* mz, const float* E_total,
     const float* Bx_old, const float* By_old, const float* Bz_old,
@@ -78,11 +80,11 @@ extern "C" __global__ void full_hlld_ct_yee(
 {
     extern __shared__ float sdata[];
     int tx = threadIdx.x; int ty = threadIdx.y; int tz = threadIdx.z;
-    int i = blockIdx.x * blockDim.x + tx + 3;
-    int j = blockIdx.y * blockDim.y + ty + 3;
-    int k = blockIdx.z * blockDim.z + tz + 3;
+    int i = blockIdx.x * blockDim.x + tx + NG;
+    int j = blockIdx.y * blockDim.y + ty + NG;
+    int k = blockIdx.z * blockDim.z + tz + NG;
 
-    if (i >= Ni-3 || j >= Ni-3 || k >= Ni-3) return;
+    if (i >= Ni-NG || j >= Ni-NG || k >= Ni-NG) return;
 
     int txs = blockDim.x + 2; int tys = blockDim.y + 2; int tzs = blockDim.z + 2;
     int sidx = (tz + 1) * tys * txs + (ty + 1) * txs + (tx + 1);
@@ -233,7 +235,7 @@ extern "C" __global__ void full_hlld_ct_yee(
 }
 ''', 'full_hlld_ct_yee')
 
-print("✅ Kernel loaded!")
+print("✅ Kernel loaded with #define NG 3!")
 
 # ====================== LAUNCH ======================
 block = (16, 16, 4)
@@ -272,4 +274,4 @@ while steps < max_steps:
         mean_divB, max_divB = compute_divB()
         print(f"Step {steps:4d} | Max|v| = {vmax:.4f} | mean|divB| = {mean_divB:.2e} | max|divB| = {max_divB:.2e}")
 
-print("\n✅ Running! Tell me the output.")
+print("\n✅ Simulation is now running! Tell me the output bro.")
