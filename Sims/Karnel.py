@@ -5,8 +5,8 @@ import cupy as cp
 N = 128
 L = 1.0
 dx = L / N
-dt = 0.000028
-max_steps = 800
+dt = 0.000025
+max_steps = 1000
 print_interval = 50
 NG = 3
 Ni = N + 2 * NG
@@ -45,35 +45,35 @@ Bz[NG:NG+N, NG:NG+N, NG:NG+N] = cp.asarray(np.random.randn(N, N, N) * pert * 0.5
 def update_ghosts():
     # Cell-centered fields
     for f in [rho, mx, my, mz, E_total]:
-        f[0:NG, :, :] = f[Ni-NG:Ni, :, :]
+        f[:NG, :, :] = f[Ni-NG:Ni, :, :]
         f[Ni:, :, :] = f[NG:2*NG, :, :]
-        f[:, 0:NG, :] = f[:, Ni-NG:Ni, :]
+        f[:, :NG, :] = f[:, Ni-NG:Ni, :]
         f[:, Ni:, :] = f[:, NG:2*NG, :]
-        f[:, :, 0:NG] = f[:, :, Ni-NG:Ni]
+        f[:, :, :NG] = f[:, :, Ni-NG:Ni]
         f[:, :, Ni:] = f[:, :, NG:2*NG]
 
-    # Bx (Ni+1, Ni, Ni)
-    Bx[0:NG, :, :] = Bx[Ni-NG:Ni, :, :]
+    # Staggered Bx (Ni+1, Ni, Ni)
+    Bx[:NG, :, :] = Bx[Ni-NG:Ni, :, :]
     Bx[Ni:, :, :] = Bx[NG:2*NG, :, :]
-    Bx[:, 0:NG, :] = Bx[:, Ni-NG:Ni, :]
+    Bx[:, :NG, :] = Bx[:, Ni-NG:Ni, :]
     Bx[:, Ni:, :] = Bx[:, NG:2*NG, :]
-    Bx[:, :, 0:NG] = Bx[:, :, Ni-NG:Ni]
+    Bx[:, :, :NG] = Bx[:, :, Ni-NG:Ni]
     Bx[:, :, Ni:] = Bx[:, :, NG:2*NG]
 
-    # By (Ni, Ni+1, Ni)
-    By[0:NG, :, :] = By[Ni-NG:Ni, :, :]
+    # Staggered By (Ni, Ni+1, Ni)
+    By[:NG, :, :] = By[Ni-NG:Ni, :, :]
     By[Ni:, :, :] = By[NG:2*NG, :, :]
-    By[:, 0:NG, :] = By[:, Ni-NG:Ni, :]
+    By[:, :NG, :] = By[:, Ni-NG:Ni, :]
     By[:, Ni:, :] = By[:, NG:2*NG, :]
-    By[:, :, 0:NG] = By[:, :, Ni-NG:Ni]
+    By[:, :, :NG] = By[:, :, Ni-NG:Ni]
     By[:, :, Ni:] = By[:, :, NG:2*NG]
 
-    # Bz (Ni, Ni, Ni+1)
-    Bz[0:NG, :, :] = Bz[Ni-NG:Ni, :, :]
+    # Staggered Bz (Ni, Ni, Ni+1)
+    Bz[:NG, :, :] = Bz[Ni-NG:Ni, :, :]
     Bz[Ni:, :, :] = Bz[NG:2*NG, :, :]
-    Bz[:, 0:NG, :] = Bz[:, Ni-NG:Ni, :]
+    Bz[:, :NG, :] = Bz[:, Ni-NG:Ni, :]
     Bz[:, Ni:, :] = Bz[:, NG:2*NG, :]
-    Bz[:, :, 0:NG] = Bz[:, :, Ni-NG:Ni]
+    Bz[:, :, :NG] = Bz[:, :, Ni-NG:Ni]
     Bz[:, :, Ni:] = Bz[:, :, NG:2*NG]
 
 def compute_divB():
@@ -82,7 +82,7 @@ def compute_divB():
             (Bz[:,:,1:] - Bz[:,:,:-1])) / dx
     return float(cp.mean(cp.abs(divB))), float(cp.max(cp.abs(divB)))
 
-# ====================== KERNEL ======================
+# ====================== FULL KERNEL ======================
 kernel = cp.RawKernel(r'''
 extern "C" __global__ void full_hlld_ct_yee(
     const float* rho, const float* mx, const float* my, const float* mz, const float* E_total,
@@ -159,7 +159,7 @@ extern "C" __global__ void full_hlld_ct_yee(
         Bz_out[i*Ni*Ni+j*Ni+k] = Bz_old[i*Ni*Ni+j*Ni+k] - dt_over_dx*(dEy_dx - dEx_dy);
     }
 
-    // Full HLLD
+    // Full HLLD (X-direction)
     if (i < Ni && j < Ni && k < Ni) {
         int idx = i*Ni*Ni + j*Ni + k;
         int idx_l = (i-1)*Ni*Ni + j*Ni + k;
@@ -288,4 +288,4 @@ while steps < max_steps:
         mean_divB, max_divB = compute_divB()
         print(f"Step {steps:4d} | Max|v| = {vmax:.4f} | mean|divB| = {mean_divB:.2e} | max|divB| = {max_divB:.2e}")
 
-print("\n✅ Simulation running! Let me know the output.")
+print("\n✅ Simulation is running! Tell me the output bro.")
