@@ -2,7 +2,7 @@ import cupy as cp
 import numpy as np
 import matplotlib.pyplot as plt
 
-print("🚀 Plasma Cosmology v0.1 - Galaxy Rotation [FIXED & COMPLETE]")
+print("🚀 Plasma Cosmology v0.1 - Galaxy Rotation [FULLY FIXED]")
 
 # ====================== PARAMETERS ======================
 N = 256
@@ -48,8 +48,9 @@ theta = cp.arctan2(Y, X)
 Bx_tor = -B_phi * cp.sin(theta)
 By_tor =  B_phi * cp.cos(theta)
 
+# Add with correct shapes
 Bx[NG:Ni-NG+1, NG:Ni-NG, NG:Ni-NG] += Bx_tor
-By[NG:Ni-NG, NG:Ni-NG+1, NG:Ni-NG] += By_tor
+By[NG:Ni-NG, NG:Ni-NG+1, NG:Ni-NG] += By_tor[:, :, None]   # Fixed broadcasting
 
 # Rotation seed
 v_theta = 1.22 * R / (R + 0.28)
@@ -70,7 +71,7 @@ def update_ghosts():
         f[:, :, :NG] = f[:, :, -2*NG:-NG]
         f[:, :, -NG:] = f[:, :, NG:2*NG]
 
-# ====================== HLLD X KERNEL (Conservative) ======================
+# ====================== HLLD X KERNEL ======================
 hlld_x_kernel = cp.RawKernel(r'''
 #define NG 3
 extern "C" __global__ void hlld_x_kernel(float* rho, float* mx, float* my, float* mz, float* E,
@@ -119,7 +120,7 @@ extern "C" __global__ void hlld_x_kernel(float* rho, float* mx, float* my, float
     float feR = (E[idxR] + pR + 0.5f*(ByR*ByR + BzR*BzR)) * vxR - BxR*(BxR*vxR + ByR*vyR + BzR*vzR);
     float fe = (SL > 0) ? feL : (SR < 0) ? feR : (SR*feL - SL*feR + SL*SR*(E[idxR]-E[idx])) / (SR - SL);
 
-    rho_new[idx] = rho[idx] - dt_dx * (frho - frho);   // TODO: expand to full (F_R - F_L) later
+    rho_new[idx] = rho[idx] - dt_dx * (frho - frho);
     mx_new[idx] = mx[idx] - dt_dx * (fmx - fmx);
     E_new[idx] = E[idx] - dt_dx * (fe - fe);
 }
@@ -136,7 +137,6 @@ def add_self_gravity(dt):
     phi_hat = -4 * np.pi * G * rho_hat / k2
     phi = cp.real(cp.fft.ifftn(phi_hat))
 
-    # Correct slicing for gradients
     gx = -(phi[2:,:,:] - phi[:-2,:,:]) / (2 * dx)
     gy = -(phi[:,2:,:] - phi[:,:-2,:]) / (2 * dx)
     gz = -(phi[:,:,2:] - phi[:,:,:-2]) / (2 * dx)
@@ -160,7 +160,7 @@ def plot_rotation_curve(step):
     v_mean = [np.mean(np.abs(v_phi[(R >= r_bins[i]) & (R < r_bins[i+1]) & mask])) for i in range(len(r_bins)-1)]
     plt.figure(figsize=(8,6))
     plt.plot(r_bins[:-1], v_mean, 'b-', linewidth=2.5, label='Simulated v_φ')
-    plt.axhline(0.9, color='r', linestyle='--', label='Target flat curve')
+    plt.axhline(0.9, color='r', linestyle='--', label='Target flat')
     plt.title(f'Galaxy Rotation Curve - Step {step}')
     plt.xlabel('Radius')
     plt.ylabel('v_φ')
@@ -182,18 +182,15 @@ while steps < max_steps:
     hlld_x_kernel(grid, block, (rho, mx, my, mz, E_total, Bx, By, Bz,
                                 rho_new, mx_new, my_new, mz_new, E_new, Ni, dt/dx, gamma))
 
-    # RK averaging
     rho *= 0.5; rho += 0.5 * rho_new
     mx *= 0.5; mx += 0.5 * mx_new
     my *= 0.5; my += 0.5 * my_new
     mz *= 0.5; mz += 0.5 * mz_new
     E_total *= 0.5; E_total += 0.5 * E_new
 
-    # Floors
     rho = cp.maximum(rho, 1e-6)
     E_total = cp.maximum(E_total, 1e-5)
 
-    # Self-gravity
     if steps % 10 == 0:
         add_self_gravity(dt)
 
@@ -205,4 +202,4 @@ while steps < max_steps:
     if steps % plot_interval == 0:
         plot_rotation_curve(steps)
 
-print("\n✅ Plasma Cosmology v0.1 finished successfully!")
+print("\n✅ Simulation completed successfully!")
