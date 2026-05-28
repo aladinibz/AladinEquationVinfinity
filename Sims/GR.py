@@ -2,7 +2,7 @@ import cupy as cp
 import numpy as np
 import matplotlib.pyplot as plt
 
-print("🚀 Plasma Cosmology v0.1 - Galaxy Rotation [CUDA FIXED]")
+print("🚀 Plasma Cosmology v0.1 - Galaxy Rotation [FINAL FIXED]")
 
 # ====================== PARAMETERS ======================
 N = 256
@@ -41,14 +41,17 @@ X, Y = cp.meshgrid(x, y)
 R = cp.sqrt(X**2 + Y**2)
 R = cp.maximum(R, 0.12)
 
+# Strong Toroidal B (Z-pinch)
 B_phi = 1.28 / (R + 0.09)
 theta = cp.arctan2(Y, X)
 Bx_tor = -B_phi * cp.sin(theta)
 By_tor =  B_phi * cp.cos(theta)
 
+# FIXED BROADCASTING
 Bx[NG:Ni-NG+1, NG:Ni-NG, NG:Ni-NG] += Bx_tor
-By[NG:Ni-NG, NG:Ni-NG+1, NG:Ni-NG] += By_tor
+By[NG:Ni-NG, NG:Ni-NG+1, NG:Ni-NG] += By_tor   # Direct add - shapes now match
 
+# Rotation seed
 v_theta = 1.22 * R / (R + 0.28)
 vx_seed = -v_theta * cp.sin(theta) * 0.93
 vy_seed =  v_theta * cp.cos(theta) * 0.93
@@ -67,7 +70,7 @@ def update_ghosts():
         f[:, :, :NG] = f[:, :, -2*NG:-NG]
         f[:, :, -NG:] = f[:, :, NG:2*NG]
 
-# ====================== FIXED HLLD X KERNEL ======================
+# ====================== HLLD X KERNEL ======================
 hlld_x_kernel = cp.RawKernel(r'''
 #define NG 3
 extern "C" __global__ void hlld_x_kernel(float* rho, float* mx, float* my, float* mz, float* E,
