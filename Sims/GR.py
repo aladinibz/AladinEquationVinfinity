@@ -2,7 +2,7 @@ import cupy as cp
 import numpy as np
 import matplotlib.pyplot as plt
 
-print("🚀 Plasma Cosmology v0.1 - Galaxy Rotation [SHAPE ERRORS FIXED]")
+print("🚀 Plasma Cosmology v0.1 - Galaxy Rotation [CUDA FIXED]")
 
 # ====================== PARAMETERS ======================
 N = 256
@@ -41,17 +41,14 @@ X, Y = cp.meshgrid(x, y)
 R = cp.sqrt(X**2 + Y**2)
 R = cp.maximum(R, 0.12)
 
-# Strong Toroidal B (Z-pinch)
 B_phi = 1.28 / (R + 0.09)
 theta = cp.arctan2(Y, X)
 Bx_tor = -B_phi * cp.sin(theta)
 By_tor =  B_phi * cp.cos(theta)
 
-# FIXED: Correct broadcasting for staggered arrays
 Bx[NG:Ni-NG+1, NG:Ni-NG, NG:Ni-NG] += Bx_tor
-By[NG:Ni-NG, NG:Ni-NG+1, NG:Ni-NG] += By_tor[:, None, :]   # <-- FIXED LINE
+By[NG:Ni-NG, NG:Ni-NG+1, NG:Ni-NG] += By_tor
 
-# Rotation seed
 v_theta = 1.22 * R / (R + 0.28)
 vx_seed = -v_theta * cp.sin(theta) * 0.93
 vy_seed =  v_theta * cp.cos(theta) * 0.93
@@ -70,7 +67,7 @@ def update_ghosts():
         f[:, :, :NG] = f[:, :, -2*NG:-NG]
         f[:, :, -NG:] = f[:, :, NG:2*NG]
 
-# ====================== HLLD X KERNEL ======================
+# ====================== FIXED HLLD X KERNEL ======================
 hlld_x_kernel = cp.RawKernel(r'''
 #define NG 3
 extern "C" __global__ void hlld_x_kernel(float* rho, float* mx, float* my, float* mz, float* E,
@@ -90,11 +87,15 @@ extern "C" __global__ void hlld_x_kernel(float* rho, float* mx, float* my, float
 
     float rhoL = fmaxf(rho[idx], 1e-8f);
     float vxL = mx[idx]/rhoL, vyL = my[idx]/rhoL, vzL = mz[idx]/rhoL;
-    float pL = fmaxf((gamma-1.0f)*(E[idx] - 0.5f*rhoL*(vxL*vxL+vyL*vyL+vzL*vzL) - 0.5f*(Bx[idx]*Bx[idx]+By[idx]*By[idx]+Bz[idx]*Bz[idx])), 1e-6f);
+    float kinL = 0.5f * rhoL * (vxL*vxL + vyL*vyL + vzL*vzL);
+    float magL = 0.5f * (Bx[idx]*Bx[idx] + By[idx]*By[idx] + Bz[idx]*Bz[idx]);
+    float pL = fmaxf((gamma-1.0f)*(E[idx] - kinL - magL), 1e-6f);
 
     float rhoR = fmaxf(rho[idxR], 1e-8f);
     float vxR = mx[idxR]/rhoR, vyR = my[idxR]/rhoR, vzR = mz[idxR]/rhoR;
-    float pR = fmaxf((gamma-1.0f)*(E[idxR] - 0.5f*rhoR*(vxR*vxR+vyR*vyR+vzR*vzR) - 0.5f*(Bx[idxR]*Bx[idxR]+By[idxR]*By[idxR]+Bz[idxR]*Bz[idxR])), 1e-6f);
+    float kinR = 0.5f * rhoR * (vxR*vxR + vyR*vyR + vzR*vzR);
+    float magR = 0.5f * (Bx[idxR]*Bx[idxR] + By[idxR]*By[idxR] + Bz[idxR]*Bz[idxR]);
+    float pR = fmaxf((gamma-1.0f)*(E[idxR] - kinR - magR), 1e-6f);
 
     float BxL = Bx[idx], BxR = Bx[idxR];
     float ByL = By[idx], ByR = By[idxR];
@@ -103,8 +104,8 @@ extern "C" __global__ void hlld_x_kernel(float* rho, float* mx, float* my, float
     float cfL = sqrtf(gamma*pL/rhoL + (BxL*BxL + ByL*ByL + BzL*BzL)/rhoL);
     float cfR = sqrtf(gamma*pR/rhoR + (BxR*BxR + ByR*ByR + BzR*BzR)/rhoR);
 
-    float SL = minf(vxL - cfL, vxR - cfR);
-    float SR = maxf(vxL + cfL, vxR + cfR);
+    float SL = fminf(vxL - cfL, vxR - cfR);
+    float SR = fmaxf(vxL + cfL, vxR + cfR);
 
     float frhoL = rhoL * vxL, frhoR = rhoR * vxR;
     float frho = (SL > 0) ? frhoL : (SR < 0) ? frhoR : (SR*frhoL - SL*frhoR + SL*SR*(rhoR - rhoL)) / (SR - SL);
