@@ -1,3 +1,8 @@
+# Plasma Cosmology v0.1 - Galaxy Rotation
+# Author: Bucurenciu Mihai Alexandru ( Aladin )
+# Date: May 2026
+# Description: 3D MHD simulation testing magnetic tension (JxB + Z-pinch) for galaxy rotation curves
+
 import cupy as cp
 import numpy as np
 import matplotlib.pyplot as plt
