@@ -2,7 +2,7 @@ import cupy as cp
 import numpy as np
 import matplotlib.pyplot as plt
 
-print("🚀 Plasma Cosmology v0.1 - Galaxy Rotation [FINAL FIXED]")
+print("🚀 Plasma Cosmology v0.1 - Galaxy Rotation [GHOSTS FIXED]")
 
 # ====================== PARAMETERS ======================
 N = 256
@@ -41,17 +41,15 @@ X, Y = cp.meshgrid(x, y)
 R = cp.sqrt(X**2 + Y**2)
 R = cp.maximum(R, 0.12)
 
-# Strong Toroidal B (Z-pinch)
 B_phi = 1.28 / (R + 0.09)
 theta = cp.arctan2(Y, X)
 Bx_tor = -B_phi * cp.sin(theta)
 By_tor =  B_phi * cp.cos(theta)
 
-# FIXED BROADCASTING
+# Correct staggered initialization
 Bx[NG:Ni-NG+1, NG:Ni-NG, NG:Ni-NG] += Bx_tor
-By[NG:Ni-NG, NG:Ni-NG+1, NG:Ni-NG] += By_tor   # Direct add - shapes now match
+By[NG:Ni-NG, NG:Ni-NG+1, NG:Ni-NG] += By_tor
 
-# Rotation seed
 v_theta = 1.22 * R / (R + 0.28)
 vx_seed = -v_theta * cp.sin(theta) * 0.93
 vy_seed =  v_theta * cp.cos(theta) * 0.93
@@ -60,15 +58,30 @@ mid = slice(NG, Ni-NG)
 mx[mid, mid, mid] += vx_seed * rho[mid, mid, mid]
 my[mid, mid, mid] += vy_seed * rho[mid, mid, mid]
 
+# ====================== FIXED GHOST CELL UPDATE ======================
 def update_ghosts():
-    fields = [rho, mx, my, mz, E_total]
-    for f in fields:
-        f[:NG] = f[-2*NG:-NG]
-        f[-NG:] = f[NG:2*NG]
-        f[:, :NG] = f[:, -2*NG:-NG]
-        f[:, -NG:] = f[:, NG:2*NG]
+    # Cell-centered fields
+    for f in [rho, mx, my, mz, E_total]:
+        # X direction
+        f[:NG, :, :] = f[-2*NG:-NG, :, :]
+        f[-NG:, :, :] = f[NG:2*NG, :, :]
+        # Y direction
+        f[:, :NG, :] = f[:, -2*NG:-NG, :]
+        f[:, -NG:, :] = f[:, NG:2*NG, :]
+        # Z direction
         f[:, :, :NG] = f[:, :, -2*NG:-NG]
         f[:, :, -NG:] = f[:, :, NG:2*NG]
+
+    # Face-centered staggered fields - special handling
+    # Bx (x-faces)
+    Bx[:NG+1, :, :] = Bx[-2*NG-1:-NG, :, :]
+    Bx[-NG:, :, :] = Bx[NG:2*NG+1, :, :]
+    # By (y-faces)
+    By[:, :NG+1, :] = By[:, -2*NG-1:-NG, :]
+    By[:, -NG:, :] = By[:, NG:2*NG+1, :]
+    # Bz (z-faces)
+    Bz[:, :, :NG+1] = Bz[:, :, -2*NG-1:-NG]
+    Bz[:, :, -NG:] = Bz[:, :, NG:2*NG+1]
 
 # ====================== HLLD X KERNEL ======================
 hlld_x_kernel = cp.RawKernel(r'''
@@ -127,16 +140,6 @@ extern "C" __global__ void hlld_x_kernel(float* rho, float* mx, float* my, float
 }
 ''', 'hlld_x_kernel')
 
-def update_ghosts():
-    fields = [rho, mx, my, mz, E_total]
-    for f in fields:
-        f[:NG] = f[-2*NG:-NG]
-        f[-NG:] = f[NG:2*NG]
-        f[:, :NG] = f[:, -2*NG:-NG]
-        f[:, -NG:] = f[:, NG:2*NG]
-        f[:, :, :NG] = f[:, :, -2*NG:-NG]
-        f[:, :, -NG:] = f[:, :, NG:2*NG]
-
 def plot_rotation_curve(step):
     rho_c = rho[NG:Ni-NG, NG:Ni-NG, NG:Ni-NG].get()
     mx_c = mx[NG:Ni-NG, NG:Ni-NG, NG:Ni-NG].get()
@@ -189,4 +192,4 @@ while steps < max_steps:
     if steps % plot_interval == 0:
         plot_rotation_curve(steps)
 
-print("\n✅ Simulation completed successfully!")
+print("\n✅ Solid Base Running - Ghosts Fixed!")
