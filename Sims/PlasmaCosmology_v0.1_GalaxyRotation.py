@@ -2,7 +2,7 @@ import cupy as cp
 import numpy as np
 import matplotlib.pyplot as plt
 
-print("🚀 Plasma Cosmology v0.1 - Galaxy Rotation [CLEAN SOLID BASE]")
+print("🚀 Plasma Cosmology v0.1 - Galaxy Rotation [CLEAN SOLID BASE - FIXED]")
 
 # ====================== PARAMETERS ======================
 N = 256
@@ -42,14 +42,15 @@ X, Y = cp.meshgrid(x, y)
 R = cp.sqrt(X**2 + Y**2)
 R = cp.maximum(R, 0.12)
 
-# Strong Toroidal B (Z-pinch)
+# Strong Toroidal B (Z-pinch core)
 B_phi = 1.28 / (R + 0.09)
 theta = cp.arctan2(Y, X)
 Bx_tor = -B_phi * cp.sin(theta)
 By_tor =  B_phi * cp.cos(theta)
 
+# Correct broadcasting to staggered arrays
 Bx[NG:Ni-NG+1, NG:Ni-NG, NG:Ni-NG] += Bx_tor
-By[NG:Ni-NG, NG:Ni-NG+1, NG:Ni-NG] += By_tor
+By[NG:Ni-NG, NG:Ni-NG+1, NG:Ni-NG] += By_tor[:, :, None]   # Fixed shape
 
 # Rotation seed
 v_theta = 1.22 * R / (R + 0.28)
@@ -119,10 +120,10 @@ dt = 2.2e-5
 while steps < max_steps:
     update_ghosts()
 
-    # HLLD update (X for now)
-    # hlld_x_kernel(...)   # Add your full kernel here
+    # Placeholder for HLLD update (add your kernel here)
+    # hlld_x_kernel(...)
 
-    # Conservative RK averaging (placeholder)
+    # Conservative RK averaging (placeholder for now)
     rho *= 0.5; rho += 0.5 * rho_new
     mx *= 0.5; mx += 0.5 * mx_new
     my *= 0.5; my += 0.5 * my_new
