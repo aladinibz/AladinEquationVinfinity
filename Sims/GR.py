@@ -2,7 +2,7 @@ import cupy as cp
 import numpy as np
 import matplotlib.pyplot as plt
 
-print("🚀 Plasma Cosmology v0.1 - Galaxy Rotation [FULLY FIXED]")
+print("🚀 Plasma Cosmology v0.1 - Galaxy Rotation [FINAL FIXED]")
 
 # ====================== PARAMETERS ======================
 N = 256
@@ -48,9 +48,9 @@ theta = cp.arctan2(Y, X)
 Bx_tor = -B_phi * cp.sin(theta)
 By_tor =  B_phi * cp.cos(theta)
 
-# Add with correct shapes
+# Correct broadcasting for staggered arrays
 Bx[NG:Ni-NG+1, NG:Ni-NG, NG:Ni-NG] += Bx_tor
-By[NG:Ni-NG, NG:Ni-NG+1, NG:Ni-NG] += By_tor[:, :, None]   # Fixed broadcasting
+By[NG:Ni-NG, NG:Ni-NG+1, NG:Ni-NG] += By_tor[:, :, None]   # <-- THIS FIXES IT
 
 # Rotation seed
 v_theta = 1.22 * R / (R + 0.28)
@@ -106,8 +106,6 @@ extern "C" __global__ void hlld_x_kernel(float* rho, float* mx, float* my, float
 
     float SL = minf(vxL - cfL, vxR - cfR);
     float SR = maxf(vxL + cfL, vxR + cfR);
-
-    float Sstar = (pR - pL + rhoL*vxL*(SL - vxL) - rhoR*vxR*(SR - vxR)) / (rhoL*(SL - vxL) - rhoR*(SR - vxR) + 1e-12f);
 
     float frhoL = rhoL * vxL, frhoR = rhoR * vxR;
     float frho = (SL > 0) ? frhoL : (SR < 0) ? frhoR : (SR*frhoL - SL*frhoR + SL*SR*(rhoR - rhoL)) / (SR - SL);
