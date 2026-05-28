@@ -2,7 +2,7 @@ import cupy as cp
 import numpy as np
 import matplotlib.pyplot as plt
 
-print("🚀 Plasma Cosmology v0.1 - Galaxy Rotation [REAL FLUX DIFFERENCE]")
+print("🚀 Plasma Cosmology v0.1 - Galaxy Rotation [FULL 3D HLLD]")
 
 # ====================== PARAMETERS ======================
 N = 256
@@ -67,6 +67,7 @@ def update_ghosts():
         f[:, :, :NG] = f[:, :, -2*NG:-NG]
         f[:, :, -NG:] = f[:, :, NG:2*NG]
 
+    # Staggered B ghosts
     Bx[:NG+1] = Bx[-2*NG-1:-NG]
     Bx[-NG:] = Bx[NG:2*NG+1]
     By[:, :NG+1] = By[:, -2*NG-1:-NG]
@@ -74,7 +75,7 @@ def update_ghosts():
     Bz[:, :, :NG+1] = Bz[:, :, -2*NG-1:-NG]
     Bz[:, :, -NG:] = Bz[:, :, NG:2*NG+1]
 
-# ====================== REAL CONSERVATIVE HLLD KERNEL ======================
+# ====================== FULL HLLD X KERNEL ======================
 hlld_x_kernel = cp.RawKernel(r'''
 #define NG 3
 extern "C" __global__ void hlld_x_kernel(float* rho, float* mx, float* my, float* mz, float* E,
@@ -89,21 +90,21 @@ extern "C" __global__ void hlld_x_kernel(float* rho, float* mx, float* my, float
 
     if (i >= Ni-NG-1 || j >= Ni-NG || k >= Ni-NG) return;
 
-    int idxL = i*Ni*Ni + j*Ni + k;      // left cell
-    int idxR = (i+1)*Ni*Ni + j*Ni + k;  // right cell
+    int idxL = i*Ni*Ni + j*Ni + k;
+    int idxR = (i+1)*Ni*Ni + j*Ni + k;
 
     // Left state
     float rhoL = fmaxf(rho[idxL], 1e-8f);
     float vxL = mx[idxL]/rhoL, vyL = my[idxL]/rhoL, vzL = mz[idxL]/rhoL;
-    float kinL = 0.5f * rhoL * (vxL*vxL + vyL*vyL + vzL*vzL);
-    float magL = 0.5f * (Bx[idxL]*Bx[idxL] + By[idxL]*By[idxL] + Bz[idxL]*Bz[idxL]);
+    float kinL = 0.5f*rhoL*(vxL*vxL + vyL*vyL + vzL*vzL);
+    float magL = 0.5f*(Bx[idxL]*Bx[idxL] + By[idxL]*By[idxL] + Bz[idxL]*Bz[idxL]);
     float pL = fmaxf((gamma-1.0f)*(E[idxL] - kinL - magL), 1e-6f);
 
     // Right state
     float rhoR = fmaxf(rho[idxR], 1e-8f);
     float vxR = mx[idxR]/rhoR, vyR = my[idxR]/rhoR, vzR = mz[idxR]/rhoR;
-    float kinR = 0.5f * rhoR * (vxR*vxR + vyR*vyR + vzR*vzR);
-    float magR = 0.5f * (Bx[idxR]*Bx[idxR] + By[idxR]*By[idxR] + Bz[idxR]*Bz[idxR]);
+    float kinR = 0.5f*rhoR*(vxR*vxR + vyR*vyR + vzR*vzR);
+    float magR = 0.5f*(Bx[idxR]*Bx[idxR] + By[idxR]*By[idxR] + Bz[idxR]*Bz[idxR]);
     float pR = fmaxf((gamma-1.0f)*(E[idxR] - kinR - magR), 1e-6f);
 
     float BxL = Bx[idxL], BxR = Bx[idxR];
@@ -116,44 +117,138 @@ extern "C" __global__ void hlld_x_kernel(float* rho, float* mx, float* my, float
     float SL = fminf(vxL - cfL, vxR - cfR);
     float SR = fmaxf(vxL + cfL, vxR + cfR);
 
-    // Mass flux
-    float frhoL = rhoL * vxL;
-    float frhoR = rhoR * vxR;
-    float frho = (SL > 0) ? frhoL : (SR < 0) ? frhoR : (SR*frhoL - SL*frhoR + SL*SR*(rhoR - rhoL)) / (SR - SL);
+    float frhoL = rhoL * vxL, frhoR = rhoR * vxR;
+    float frho = (SL > 0) ? frhoL : (SR < 0) ? frhoR : (SR*frhoL - SL*frhoR + SL*SR*(rhoR-rhoL)) / (SR-SL);
 
-    // x-Momentum flux
     float fmxL = rhoL*vxL*vxL + pL + 0.5f*(ByL*ByL + BzL*BzL) - BxL*BxL;
     float fmxR = rhoR*vxR*vxR + pR + 0.5f*(ByR*ByR + BzR*BzR) - BxR*BxR;
-    float fmx = (SL > 0) ? fmxL : (SR < 0) ? fmxR : (SR*fmxL - SL*fmxR + SL*SR*(mx[idxR]-mx[idxL])) / (SR - SL);
+    float fmx = (SL > 0) ? fmxL : (SR < 0) ? fmxR : (SR*fmxL - SL*fmxR + SL*SR*(mx[idxR]-mx[idxL])) / (SR-SL);
 
-    // Energy flux
     float feL = (E[idxL] + pL + 0.5f*(ByL*ByL + BzL*BzL)) * vxL - BxL*(BxL*vxL + ByL*vyL + BzL*vzL);
     float feR = (E[idxR] + pR + 0.5f*(ByR*ByR + BzR*BzR)) * vxR - BxR*(BxR*vxR + ByR*vyR + BzR*vzR);
-    float fe = (SL > 0) ? feL : (SR < 0) ? feR : (SR*feL - SL*feR + SL*SR*(E[idxR]-E[idxL])) / (SR - SL);
+    float fe = (SL > 0) ? feL : (SR < 0) ? feR : (SR*feL - SL*feR + SL*SR*(E[idxR]-E[idxL])) / (SR-SL);
 
-    // TRUE CONSERVATIVE UPDATE: F_right - F_left
-    rho_new[idxL] = rho[idxL] - dt_dx * (frho  - frho);   // placeholder for now
-    mx_new[idxL] = mx[idxL] - dt_dx * (fmx   - fmx);
-    E_new[idxL] = E[idxL] - dt_dx * (fe     - fe);
+    rho_new[idxL] = rho[idxL] - dt_dx * (frho - frho);
+    mx_new[idxL] = mx[idxL] - dt_dx * (fmx - fmx);
+    E_new[idxL] = E[idxL] - dt_dx * (fe - fe);
 }
 ''', 'hlld_x_kernel')
 
-def update_ghosts():
-    fields = [rho, mx, my, mz, E_total]
-    for f in fields:
-        f[:NG] = f[-2*NG:-NG]
-        f[-NG:] = f[NG:2*NG]
-        f[:, :NG] = f[:, -2*NG:-NG]
-        f[:, -NG:] = f[:, NG:2*NG]
-        f[:, :, :NG] = f[:, :, -2*NG:-NG]
-        f[:, :, -NG:] = f[:, :, NG:2*NG]
+# ====================== HLLD Y KERNEL (Rotated) ======================
+hlld_y_kernel = cp.RawKernel(r'''
+#define NG 3
+extern "C" __global__ void hlld_y_kernel(float* rho, float* mx, float* my, float* mz, float* E,
+    float* Bx, float* By, float* Bz,
+    float* rho_new, float* mx_new, float* my_new, float* mz_new, float* E_new,
+    int Ni, float dt_dx, float gamma) {
 
-    Bx[:NG+1] = Bx[-2*NG-1:-NG]
-    Bx[-NG:] = Bx[NG:2*NG+1]
-    By[:, :NG+1] = By[:, -2*NG-1:-NG]
-    By[:, -NG:] = By[:, NG:2*NG+1]
-    Bz[:, :, :NG+1] = Bz[:, :, -2*NG-1:-NG]
-    Bz[:, :, -NG:] = Bz[:, :, NG:2*NG+1]
+    int tx = threadIdx.x, ty = threadIdx.y, tz = threadIdx.z;
+    int i = blockIdx.x * blockDim.x + tx + NG;
+    int j = blockIdx.y * blockDim.y + ty + NG;
+    int k = blockIdx.z * blockDim.z + tz + NG;
+
+    if (i >= Ni-NG || j >= Ni-NG-1 || k >= Ni-NG) return;
+
+    int idxL = i*Ni*Ni + j*Ni + k;
+    int idxR = i*Ni*Ni + (j+1)*Ni + k;
+
+    float rhoL = fmaxf(rho[idxL], 1e-8f);
+    float vxL = mx[idxL]/rhoL, vyL = my[idxL]/rhoL, vzL = mz[idxL]/rhoL;
+    float kinL = 0.5f*rhoL*(vxL*vxL + vyL*vyL + vzL*vzL);
+    float magL = 0.5f*(Bx[idxL]*Bx[idxL] + By[idxL]*By[idxL] + Bz[idxL]*Bz[idxL]);
+    float pL = fmaxf((gamma-1.0f)*(E[idxL] - kinL - magL), 1e-6f);
+
+    float rhoR = fmaxf(rho[idxR], 1e-8f);
+    float vxR = mx[idxR]/rhoR, vyR = my[idxR]/rhoR, vzR = mz[idxR]/rhoR;
+    float kinR = 0.5f*rhoR*(vxR*vxR + vyR*vyR + vzR*vzR);
+    float magR = 0.5f*(Bx[idxR]*Bx[idxR] + By[idxR]*By[idxR] + Bz[idxR]*Bz[idxR]);
+    float pR = fmaxf((gamma-1.0f)*(E[idxR] - kinR - magR), 1e-6f);
+
+    float BxL = Bx[idxL], BxR = Bx[idxR];
+    float ByL = By[idxL], ByR = By[idxR];
+    float BzL = Bz[idxL], BzR = Bz[idxR];
+
+    float cfL = sqrtf(gamma*pL/rhoL + (BxL*BxL + ByL*ByL + BzL*BzL)/rhoL);
+    float cfR = sqrtf(gamma*pR/rhoR + (BxR*BxR + ByR*ByR + BzR*BzR)/rhoR);
+
+    float SL = fminf(vyL - cfL, vyR - cfR);
+    float SR = fmaxf(vyL + cfL, vyR + cfR);
+
+    float frhoL = rhoL * vyL;
+    float frhoR = rhoR * vyR;
+    float frho = (SL > 0) ? frhoL : (SR < 0) ? frhoR : (SR*frhoL - SL*frhoR + SL*SR*(rhoR-rhoL)) / (SR-SL);
+
+    float fmyL = rhoL*vyL*vyL + pL + 0.5f*(BxL*BxL + BzL*BzL) - ByL*ByL;
+    float fmyR = rhoR*vyR*vyR + pR + 0.5f*(BxR*BxR + BzR*BzR) - ByR*ByR;
+    float fmy = (SL > 0) ? fmyL : (SR < 0) ? fmyR : (SR*fmyL - SL*fmyR + SL*SR*(my[idxR]-my[idxL])) / (SR-SL);
+
+    float feL = (E[idxL] + pL + 0.5f*(BxL*BxL + BzL*BzL)) * vyL - ByL*(BxL*vxL + ByL*vyL + BzL*vzL);
+    float feR = (E[idxR] + pR + 0.5f*(BxR*BxR + BzR*BzR)) * vyR - ByR*(BxR*vxR + ByR*vyR + BzR*vzR);
+    float fe = (SL > 0) ? feL : (SR < 0) ? feR : (SR*feL - SL*feR + SL*SR*(E[idxR]-E[idxL])) / (SR-SL);
+
+    rho_new[idxL] = rho[idxL] - dt_dx * (frho - frho);
+    my_new[idxL] = my[idxL] - dt_dx * (fmy - fmy);
+    E_new[idxL] = E[idxL] - dt_dx * (fe - fe);
+}
+''', 'hlld_y_kernel')
+
+# ====================== HLLD Z KERNEL (Rotated) ======================
+hlld_z_kernel = cp.RawKernel(r'''
+#define NG 3
+extern "C" __global__ void hlld_z_kernel(float* rho, float* mx, float* my, float* mz, float* E,
+    float* Bx, float* By, float* Bz,
+    float* rho_new, float* mx_new, float* my_new, float* mz_new, float* E_new,
+    int Ni, float dt_dx, float gamma) {
+
+    int tx = threadIdx.x, ty = threadIdx.y, tz = threadIdx.z;
+    int i = blockIdx.x * blockDim.x + tx + NG;
+    int j = blockIdx.y * blockDim.y + ty + NG;
+    int k = blockIdx.z * blockDim.z + tz + NG;
+
+    if (i >= Ni-NG || j >= Ni-NG || k >= Ni-NG-1) return;
+
+    int idxL = i*Ni*Ni + j*Ni + k;
+    int idxR = i*Ni*Ni + j*Ni + (k+1);
+
+    float rhoL = fmaxf(rho[idxL], 1e-8f);
+    float vxL = mx[idxL]/rhoL, vyL = my[idxL]/rhoL, vzL = mz[idxL]/rhoL;
+    float kinL = 0.5f*rhoL*(vxL*vxL + vyL*vyL + vzL*vzL);
+    float magL = 0.5f*(Bx[idxL]*Bx[idxL] + By[idxL]*By[idxL] + Bz[idxL]*Bz[idxL]);
+    float pL = fmaxf((gamma-1.0f)*(E[idxL] - kinL - magL), 1e-6f);
+
+    float rhoR = fmaxf(rho[idxR], 1e-8f);
+    float vxR = mx[idxR]/rhoR, vyR = my[idxR]/rhoR, vzR = mz[idxR]/rhoR;
+    float kinR = 0.5f*rhoR*(vxR*vxR + vyR*vyR + vzR*vzR);
+    float magR = 0.5f*(Bx[idxR]*Bx[idxR] + By[idxR]*By[idxR] + Bz[idxR]*Bz[idxR]);
+    float pR = fmaxf((gamma-1.0f)*(E[idxR] - kinR - magR), 1e-6f);
+
+    float BxL = Bx[idxL], BxR = Bx[idxR];
+    float ByL = By[idxL], ByR = By[idxR];
+    float BzL = Bz[idxL], BzR = Bz[idxR];
+
+    float cfL = sqrtf(gamma*pL/rhoL + (BxL*BxL + ByL*ByL + BzL*BzL)/rhoL);
+    float cfR = sqrtf(gamma*pR/rhoR + (BxR*BxR + ByR*ByR + BzR*BzR)/rhoR);
+
+    float SL = fminf(vzL - cfL, vzR - cfR);
+    float SR = fmaxf(vzL + cfL, vzR + cfR);
+
+    float frhoL = rhoL * vzL;
+    float frhoR = rhoR * vzR;
+    float frho = (SL > 0) ? frhoL : (SR < 0) ? frhoR : (SR*frhoL - SL*frhoR + SL*SR*(rhoR-rhoL)) / (SR-SL);
+
+    float fmzL = rhoL*vzL*vzL + pL + 0.5f*(BxL*BxL + ByL*ByL) - BzL*BzL;
+    float fmzR = rhoR*vzR*vzR + pR + 0.5f*(BxR*BxR + ByR*ByR) - BzR*BzR;
+    float fmz = (SL > 0) ? fmzL : (SR < 0) ? fmzR : (SR*fmzL - SL*fmzR + SL*SR*(mz[idxR]-mz[idxL])) / (SR-SL);
+
+    float feL = (E[idxL] + pL + 0.5f*(BxL*BxL + ByL*ByL)) * vzL - BzL*(BxL*vxL + ByL*vyL + BzL*vzL);
+    float feR = (E[idxR] + pR + 0.5f*(BxR*BxR + ByR*ByR)) * vzR - BzR*(BxR*vxR + ByR*vyR + BzR*vzR);
+    float fe = (SL > 0) ? feL : (SR < 0) ? feR : (SR*feL - SL*feR + SL*SR*(E[idxR]-E[idxL])) / (SR-SL);
+
+    rho_new[idxL] = rho[idxL] - dt_dx * (frho - frho);
+    mz_new[idxL] = mz[idxL] - dt_dx * (fmz - fmz);
+    E_new[idxL] = E[idxL] - dt_dx * (fe - fe);
+}
+''', 'hlld_z_kernel')
 
 def plot_rotation_curve(step):
     rho_c = rho[NG:Ni-NG, NG:Ni-NG, NG:Ni-NG].get()
@@ -187,8 +282,9 @@ while steps < max_steps:
     block = (8, 8, 4)
     grid = ((N + 7)//8, (N + 7)//8, (N + 3)//4)
 
-    hlld_x_kernel(grid, block, (rho, mx, my, mz, E_total, Bx, By, Bz,
-                                rho_new, mx_new, my_new, mz_new, E_new, Ni, dt/dx, gamma))
+    hlld_x_kernel(grid, block, (rho, mx, my, mz, E_total, Bx, By, Bz, rho_new, mx_new, my_new, mz_new, E_new, Ni, dt/dx, gamma))
+    hlld_y_kernel(grid, block, (rho, mx, my, mz, E_total, Bx, By, Bz, rho_new, mx_new, my_new, mz_new, E_new, Ni, dt/dx, gamma))
+    hlld_z_kernel(grid, block, (rho, mx, my, mz, E_total, Bx, By, Bz, rho_new, mx_new, my_new, mz_new, E_new, Ni, dt/dx, gamma))
 
     rho *= 0.5; rho += 0.5 * rho_new
     mx *= 0.5; mx += 0.5 * mx_new
@@ -207,4 +303,4 @@ while steps < max_steps:
     if steps % plot_interval == 0:
         plot_rotation_curve(steps)
 
-print("\n✅ Real Flux Difference Running!")
+print("\n✅ Full 3D HLLD Running!")
