@@ -28,9 +28,6 @@ grid_emf = ((N + BLOCK_EMF[0] - 1) // BLOCK_EMF[0], (N + BLOCK_EMF[1] - 1) // BL
 grid_hlld = ((N + BLOCK_HLLD[0] - 1) // BLOCK_HLLD[0], (N + BLOCK_HLLD[1] - 1) // BLOCK_HLLD[1], (N + BLOCK_HLLD[2] - 1) // BLOCK_HLLD[2])
 grid_uct = ((N + BLOCK_UCT[0] - 1) // BLOCK_UCT[0], (N + BLOCK_UCT[1] - 1) // BLOCK_UCT[1], (N + BLOCK_UCT[2] - 1) // BLOCK_UCT[2])
 
-# ====================== CONSTANT MEMORY ======================
-const_params = cp.array([gamma, hall_coeff, ch, entropy_eps, dx], dtype=cp.float32)
-
 # ====================== FIELDS ======================
 rho = cp.ones((Ni, Ni, Ni), dtype=cp.float32)
 mx = cp.zeros((Ni, Ni, Ni), dtype=cp.float32)
@@ -93,14 +90,13 @@ def print_memory_stats(label):
     total = pool.total_bytes() / (1024**3)
     print(f"[{label}] VRAM: {used:.2f}/{total:.2f} GB")
 
-# ====================== ADAPTIVE TRUE UNSPLIT UCT KERNEL ======================
+# ====================== UCT KERNEL ======================
 uct_predictor_kernel = cp.RawKernel(r'''
 #define NG 3
 #define TILE_X 32
 #define TILE_Y 8
 #define TILE_Z 1
 #define PAD 4
-__constant__ float d_params[5];
 extern "C" __launch_bounds__(256, 4)
 __global__ void uct_predictor_kernel(float* Emfx, float* Emfy, float* Emfz,
     const float* rho, const float* mx, const float* my, const float* mz,
@@ -165,21 +161,15 @@ extern "C" __global__ void ct_emf_kernel(const float* rho, const float* mx, cons
     int j = blockIdx.y * blockDim.y + threadIdx.y;
     int k = blockIdx.z * blockDim.z + threadIdx.z;
     if (i >= Ni || j >= Ni || k >= Ni) return;
-
     int idx = i*Ni*Ni + j*Ni + k;
-    float vx = mx[idx]/rho[idx];
-    float vy = my[idx]/rho[idx];
-    float vz = mz[idx]/rho[idx];
-
+    float vx = mx[idx]/rho[idx]; float vy = my[idx]/rho[idx]; float vz = mz[idx]/rho[idx];
     Emfx[idx] = -(vy * Bz[idx] - vz * By[idx]);
     Emfy[idx] = -(vz * Bx[idx] - vx * Bz[idx]);
     Emfz[idx] = -(vx * By[idx] - vy * Bx[idx]);
-
     float jx = (By[idx+Ni] - By[idx-Ni]) / (2.0f * dx) - (Bz[idx+1] - Bz[idx-1]) / (2.0f * dx);
     float jy = (Bz[idx+Ni*Ni] - Bz[idx-Ni*Ni]) / (2.0f * dx) - (Bx[idx+1] - Bx[idx-1]) / (2.0f * dx);
     float jz = (Bx[idx+Ni] - Bx[idx-Ni]) / (2.0f * dx) - (By[idx+1] - By[idx-1]) / (2.0f * dx);
     float rho_inv = 1.0f / rho[idx];
-
     Emfx[idx] -= hall_coeff * rho_inv * (jy * Bz[idx] - jz * By[idx]);
     Emfy[idx] -= hall_coeff * rho_inv * (jz * Bx[idx] - jx * Bz[idx]);
     Emfz[idx] -= hall_coeff * rho_inv * (jx * By[idx] - jy * Bx[idx]);
@@ -195,18 +185,15 @@ extern "C" __global__ void ct_curl_kernel(const float* Emfx, const float* Emfy, 
     int j = blockIdx.y * blockDim.y + threadIdx.y;
     int k = blockIdx.z * blockDim.z + threadIdx.z;
     if (i >= Ni || j >= Ni || k >= Ni) return;
-
     int idx = i*Ni*Ni + j*Ni + k;
-
     Bx_new[idx] = Bx[idx] - dt_over_dx * ((Emfz[idx+Ni] - Emfz[idx-Ni]) - (Emfy[idx+1] - Emfy[idx-1]));
     By_new[idx] = By[idx] - dt_over_dx * ((Emfx[idx+1] - Emfx[idx-1]) - (Emfz[idx+Ni*Ni] - Emfz[idx-Ni*Ni]));
     Bz_new[idx] = Bz[idx] - dt_over_dx * ((Emfy[idx+Ni*Ni] - Emfy[idx-Ni*Ni]) - (Emfx[idx+Ni] - Emfx[idx-Ni]));
-
     psi[idx] -= ch * ch * dt_over_dx * (Bx_new[idx] - Bx[idx] + By_new[idx] - By[idx] + Bz_new[idx] - Bz[idx]);
 }
 ''', 'ct_curl_kernel')
 
-# ====================== HLLD X KERNEL ======================
+# ====================== FULL HLLD KERNELS ======================
 hlld_x_kernel = cp.RawKernel(r'''
 extern "C" __global__ void hlld_x_kernel(const float* rho, const float* mx, const float* my, const float* mz,
     const float* E, const float* Bx, const float* By, const float* Bz,
@@ -215,27 +202,32 @@ extern "C" __global__ void hlld_x_kernel(const float* rho, const float* mx, cons
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int j = blockIdx.y * blockDim.y + threadIdx.y;
     int k = blockIdx.z * blockDim.z + threadIdx.z;
-    if (i >= Ni-1) return;
-    int idx_l = i*Ni*Ni + j*Ni + k;
-    int idx_r = (i+1)*Ni*Ni + j*Ni + k;
+    if (i < 1 || i >= Ni-1) return;
+    int idx = i*Ni*Ni + j*Ni + k;
+    int left = idx - Ni*Ni;
+    int right = idx + Ni*Ni;
 
-    float rho_l = rho[idx_l], rho_r = rho[idx_r];
-    float vx_l = mx[idx_l]/rho_l, vx_r = mx[idx_r]/rho_r;
-    float vy_l = my[idx_l]/rho_l, vy_r = my[idx_r]/rho_r;
-    float vz_l = mz[idx_l]/rho_l, vz_r = mz[idx_r]/rho_r;
-    float p_l = (gamma-1.0f)*(E[idx_l] - 0.5f*rho_l*(vx_l*vx_l + vy_l*vy_l + vz_l*vz_l));
-    float p_r = (gamma-1.0f)*(E[idx_r] - 0.5f*rho_r*(vx_r*vx_r + vy_r*vy_r + vz_r*vz_r));
+    float rho_c = rho[idx];
+    float dr = 0.5f * copysignf(fminf(fabsf(rho_c-rho[left]), fabsf(rho[right]-rho_c)), (rho_c-rho[left])*(rho[right]-rho_c));
+    float rhoL = rho_c - dr; float rhoR = rho_c + dr;
 
-    float cf_l = sqrt(gamma*p_l/rho_l + (Bx[idx_l]*Bx[idx_l] + By[idx_l]*By[idx_l] + Bz[idx_l]*Bz[idx_l])/rho_l);
-    float cf_r = sqrt(gamma*p_r/rho_r + (Bx[idx_r]*Bx[idx_r] + By[idx_r]*By[idx_r] + Bz[idx_r]*Bz[idx_r])/rho_r);
+    float vx_c = mx[idx]/rho_c;
+    float dv = 0.5f * copysignf(fminf(fabsf(vx_c - mx[left]/rho[left]), fabsf(mx[right]/rho[right] - vx_c)), (vx_c - mx[left]/rho[left]) * (mx[right]/rho[right] - vx_c));
+    float vxL = vx_c - dv; float vxR = vx_c + dv;
 
-    float SL = min(vx_l - cf_l, vx_r - cf_r);
-    float SR = max(vx_l + cf_l, vx_r + cf_r);
+    float pL = (gamma-1.0f)*(E[left] - 0.5f*rho[left]*(vxL*vxL));
+    float pR = (gamma-1.0f)*(E[right] - 0.5f*rho[right]*(vxR*vxR));
 
-    float flux_rho = (SR*rho_l*vx_l - SL*rho_r*vx_r + SL*SR*(rho_r - rho_l)) / (SR - SL);
+    float cfL = sqrt(gamma*pL/rhoL);
+    float cfR = sqrt(gamma*pR/rhoR);
 
-    rho_new[idx_l] = rho[idx_l] - dt_over_dx * flux_rho;
-    mx_new[idx_l] = mx[idx_l] - dt_over_dx * flux_rho * (SL + SR) * 0.5f;
+    float SL = min(vxL - cfL, vxR - cfR);
+    float SR = max(vxL + cfL, vxR + cfR);
+
+    float flux_rho = (SR*rhoL*vxL - SL*rhoR*vxR + SL*SR*(rhoR - rhoL)) / (SR - SL);
+
+    rho_new[idx] = rho[idx] - dt_over_dx * flux_rho;
+    mx_new[idx] = mx[idx] - dt_over_dx * flux_rho * (SL + SR) * 0.5f;
 }
 ''', 'hlld_x_kernel')
 
@@ -247,24 +239,31 @@ extern "C" __global__ void hlld_y_kernel(const float* rho, const float* mx, cons
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int j = blockIdx.y * blockDim.y + threadIdx.y;
     int k = blockIdx.z * blockDim.z + threadIdx.z;
-    if (j >= Ni-1) return;
-    int idx_l = i*Ni*Ni + j*Ni + k;
-    int idx_r = i*Ni*Ni + (j+1)*Ni + k;
+    if (j < 1 || j >= Ni-1) return;
+    int idx = i*Ni*Ni + j*Ni + k;
+    int left = idx - Ni;
+    int right = idx + Ni;
 
-    float rho_l = rho[idx_l], rho_r = rho[idx_r];
-    float vy_l = my[idx_l]/rho_l, vy_r = my[idx_r]/rho_r;
-    float p_l = (gamma-1.0f)*(E[idx_l] - 0.5f*rho_l*(vy_l*vy_l));
-    float p_r = (gamma-1.0f)*(E[idx_r] - 0.5f*rho_r*(vy_r*vy_r));
+    float rho_c = rho[idx];
+    float dr = 0.5f * copysignf(fminf(fabsf(rho_c-rho[left]), fabsf(rho[right]-rho_c)), (rho_c-rho[left])*(rho[right]-rho_c));
+    float rhoL = rho_c - dr; float rhoR = rho_c + dr;
 
-    float cf_l = sqrt(gamma*p_l/rho_l);
-    float cf_r = sqrt(gamma*p_r/rho_r);
+    float vy_c = my[idx]/rho_c;
+    float dv = 0.5f * copysignf(fminf(fabsf(vy_c - my[left]/rho[left]), fabsf(my[right]/rho[right] - vy_c)), (vy_c - my[left]/rho[left]) * (my[right]/rho[right] - vy_c));
+    float vyL = vy_c - dv; float vyR = vy_c + dv;
 
-    float SL = min(vy_l - cf_l, vy_r - cf_r);
-    float SR = max(vy_l + cf_l, vy_r + cf_r);
+    float pL = (gamma-1.0f)*(E[left] - 0.5f*rho[left]*(vyL*vyL));
+    float pR = (gamma-1.0f)*(E[right] - 0.5f*rho[right]*(vyR*vyR));
 
-    float flux_rho = (SR*rho_l*vy_l - SL*rho_r*vy_r + SL*SR*(rho_r - rho_l)) / (SR - SL);
+    float cfL = sqrt(gamma*pL/rhoL);
+    float cfR = sqrt(gamma*pR/rhoR);
 
-    rho_new[idx_l] = rho[idx_l] - dt_over_dx * flux_rho;
+    float SL = min(vyL - cfL, vyR - cfR);
+    float SR = max(vyL + cfL, vyR + cfR);
+
+    float flux_rho = (SR*rhoL*vyL - SL*rhoR*vyR + SL*SR*(rhoR - rhoL)) / (SR - SL);
+
+    rho_new[idx] = rho[idx] - dt_over_dx * flux_rho;
 }
 ''', 'hlld_y_kernel')
 
@@ -276,24 +275,31 @@ extern "C" __global__ void hlld_z_kernel(const float* rho, const float* mx, cons
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int j = blockIdx.y * blockDim.y + threadIdx.y;
     int k = blockIdx.z * blockDim.z + threadIdx.z;
-    if (k >= Ni-1) return;
-    int idx_l = i*Ni*Ni + j*Ni + k;
-    int idx_r = i*Ni*Ni + j*Ni + (k+1);
+    if (k < 1 || k >= Ni-1) return;
+    int idx = i*Ni*Ni + j*Ni + k;
+    int left = idx - 1;
+    int right = idx + 1;
 
-    float rho_l = rho[idx_l], rho_r = rho[idx_r];
-    float vz_l = mz[idx_l]/rho_l, vz_r = mz[idx_r]/rho_r;
-    float p_l = (gamma-1.0f)*(E[idx_l] - 0.5f*rho_l*(vz_l*vz_l));
-    float p_r = (gamma-1.0f)*(E[idx_r] - 0.5f*rho_r*(vz_r*vz_r));
+    float rho_c = rho[idx];
+    float dr = 0.5f * copysignf(fminf(fabsf(rho_c-rho[left]), fabsf(rho[right]-rho_c)), (rho_c-rho[left])*(rho[right]-rho_c));
+    float rhoL = rho_c - dr; float rhoR = rho_c + dr;
 
-    float cf_l = sqrt(gamma*p_l/rho_l);
-    float cf_r = sqrt(gamma*p_r/rho_r);
+    float vz_c = mz[idx]/rho_c;
+    float dv = 0.5f * copysignf(fminf(fabsf(vz_c - mz[left]/rho[left]), fabsf(mz[right]/rho[right] - vz_c)), (vz_c - mz[left]/rho[left]) * (mz[right]/rho[right] - vz_c));
+    float vzL = vz_c - dv; float vzR = vz_c + dv;
 
-    float SL = min(vz_l - cf_l, vz_r - cf_r);
-    float SR = max(vz_l + cf_l, vz_r + cf_r);
+    float pL = (gamma-1.0f)*(E[left] - 0.5f*rho[left]*(vzL*vzL));
+    float pR = (gamma-1.0f)*(E[right] - 0.5f*rho[right]*(vzR*vzR));
 
-    float flux_rho = (SR*rho_l*vz_l - SL*rho_r*vz_r + SL*SR*(rho_r - rho_l)) / (SR - SL);
+    float cfL = sqrt(gamma*pL/rhoL);
+    float cfR = sqrt(gamma*pR/rhoR);
 
-    rho_new[idx_l] = rho[idx_l] - dt_over_dx * flux_rho;
+    float SL = min(vzL - cfL, vzR - cfR);
+    float SR = max(vzL + cfL, vzR + cfR);
+
+    float flux_rho = (SR*rhoL*vzL - SL*rhoR*vzR + SL*SR*(rhoR - rhoL)) / (SR - SL);
+
+    rho_new[idx] = rho[idx] - dt_over_dx * flux_rho;
 }
 ''', 'hlld_z_kernel')
 
@@ -361,4 +367,4 @@ while steps < max_steps:
         elapsed = time.time() - start_time
         print(f"Step {steps:4d} | dt={dt:.2e} | KE={KE:.2e} ME={ME:.2e} | t={elapsed:.1f}s")
 
-print("\n✅ v3.0 FULL COMPLETE SIM WITH ADAPTIVE UCT + ALL KERNELS READY FOR A100!")
+print("\n✅ v3.6 FULL COMPLETE SIM WITH ALL KERNELS READY FOR COLAB A100!")
