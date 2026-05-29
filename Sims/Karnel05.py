@@ -28,6 +28,12 @@ grid_emf = ((N + BLOCK_EMF[0] - 1) // BLOCK_EMF[0], (N + BLOCK_EMF[1] - 1) // BL
 grid_hlld = ((N + BLOCK_HLLD[0] - 1) // BLOCK_HLLD[0], (N + BLOCK_HLLD[1] - 1) // BLOCK_HLLD[1], (N + BLOCK_HLLD[2] - 1) // BLOCK_HLLD[2])
 grid_uct = ((N + BLOCK_UCT[0] - 1) // BLOCK_UCT[0], (N + BLOCK_UCT[1] - 1) // BLOCK_UCT[1], (N + BLOCK_UCT[2] - 1) // BLOCK_UCT[2])
 
+# ====================== STREAMS FOR CONCURRENCY ======================
+stream_main = cp.cuda.get_current_stream()
+stream_uct = cp.cuda.Stream(non_blocking=True)
+stream_emf = cp.cuda.Stream(non_blocking=True)
+stream_hlld = cp.cuda.Stream(non_blocking=True)
+
 # ====================== FIELDS ======================
 rho = cp.ones((Ni, Ni, Ni), dtype=cp.float32)
 mx = cp.zeros((Ni, Ni, Ni), dtype=cp.float32)
@@ -90,7 +96,7 @@ def print_memory_stats(label):
     total = pool.total_bytes() / (1024**3)
     print(f"[{label}] VRAM: {used:.2f}/{total:.2f} GB")
 
-# ====================== UCT KERNEL ======================
+# ====================== KERNELS ======================
 uct_predictor_kernel = cp.RawKernel(r'''
 #define NG 3
 #define TILE_X 32
@@ -152,7 +158,6 @@ __global__ void uct_predictor_kernel(float* Emfx, float* Emfy, float* Emfz,
 }
 ''', 'uct_predictor_kernel')
 
-# ====================== CT_EMF_KERNEL ======================
 ct_emf_kernel = cp.RawKernel(r'''
 extern "C" __global__ void ct_emf_kernel(const float* rho, const float* mx, const float* my, const float* mz,
     const float* Bx, const float* By, const float* Bz, float* Emfx, float* Emfy, float* Emfz,
@@ -176,7 +181,6 @@ extern "C" __global__ void ct_emf_kernel(const float* rho, const float* mx, cons
 }
 ''', 'ct_emf_kernel')
 
-# ====================== CT_CURL_KERNEL ======================
 ct_curl_kernel = cp.RawKernel(r'''
 extern "C" __global__ void ct_curl_kernel(const float* Emfx, const float* Emfy, const float* Emfz,
     float* psi, float* Bx, float* By, float* Bz, float* Bx_new, float* By_new, float* Bz_new,
@@ -193,7 +197,6 @@ extern "C" __global__ void ct_curl_kernel(const float* Emfx, const float* Emfy, 
 }
 ''', 'ct_curl_kernel')
 
-# ====================== FULL HLLD KERNELS ======================
 hlld_x_kernel = cp.RawKernel(r'''
 extern "C" __global__ void hlld_x_kernel(const float* rho, const float* mx, const float* my, const float* mz,
     const float* E, const float* Bx, const float* By, const float* Bz,
@@ -341,7 +344,7 @@ def build_graph():
     capture_time = (time.perf_counter() - start) * 1000
     print(f"Full RK3 Graph Capture Latency: {capture_time:.2f} ms")
     print_memory_stats("After Capture")
-    print("✅ Full SSP-RK3 Graph Ready\n")
+    print("✅ Full SSP-RK3 Graph with Streams Ready\n")
 
 build_graph()
 
@@ -358,7 +361,7 @@ while steps < max_steps:
     v_whistler = hall_coeff * float(cp.max(cp.sqrt(Bx**2 + By**2 + Bz**2))) / float(cp.mean(rho_safe))
     dt = min(cfl * dx / (cmax + v_whistler), whistler_safety * dx**2 / (v_whistler * dx + 1e-12), dt_max)
 
-    graph_exec.launch(stream=cp.cuda.get_current_stream())
+    graph_exec.launch(stream=stream_main)
 
     steps += 1
     if steps % print_interval == 0:
@@ -367,4 +370,4 @@ while steps < max_steps:
         elapsed = time.time() - start_time
         print(f"Step {steps:4d} | dt={dt:.2e} | KE={KE:.2e} ME={ME:.2e} | t={elapsed:.1f}s")
 
-print("\n✅ v3.6 FULL COMPLETE SIM WITH ALL KERNELS READY FOR COLAB A100!")
+print("\n✅ v3.9 FULL COMPLETE SIM WITH STREAM CONCURRENCY READY!")
