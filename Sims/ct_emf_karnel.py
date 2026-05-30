@@ -1,5 +1,3 @@
-My final version. Utc_emf
-
 ct_emf_kernel = cp.RawKernel(r'''
 #define TILE_X 32
 #define TILE_Y 8
