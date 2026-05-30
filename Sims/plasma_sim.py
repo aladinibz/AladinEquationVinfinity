@@ -39,7 +39,6 @@ By = cp.zeros((Ni, Ni, Ni), dtype=cp.float32)
 Bz = cp.zeros((Ni, Ni, Ni), dtype=cp.float32)
 psi = cp.zeros((Ni, Ni, Ni), dtype=cp.float32)
 
-# Pressure tensor
 pe_xx = cp.ones((Ni, Ni, Ni), dtype=cp.float32) * 1.0
 pe_yy = cp.ones((Ni, Ni, Ni), dtype=cp.float32) * 1.0
 pe_zz = cp.ones((Ni, Ni, Ni), dtype=cp.float32) * 1.0
@@ -62,7 +61,7 @@ By3 = By.copy()
 Bz3 = Bz.copy()
 psi3 = psi.copy()
 
-# ====================== UTC_EMF_KERNEL (v0.35) ======================
+# ====================== UTC_EMF_KERNEL (Fixed) ======================
 utc_emf_kernel = cp.RawKernel(r'''
 #define TILE_X 32
 #define TILE_Y 8
@@ -111,7 +110,6 @@ __global__ void utc_emf_kernel(const float* rho, const float* mx, const float* m
     __shared__ float s_pexz[TILE_X + 2*PAD][TILE_Y + 2*PAD][TILE_Z + 2*PAD];
     __shared__ float s_peyz[TILE_X + 2*PAD][TILE_Y + 2*PAD][TILE_Z + 2*PAD];
 
-    // Vectorized cooperative halo loading
     int tid = tx + ty * TILE_X + tz * TILE_X * TILE_Y;
     int total_threads = blockDim.x * blockDim.y * blockDim.z;
 
@@ -187,7 +185,7 @@ __global__ void utc_emf_kernel(const float* rho, const float* mx, const float* m
         float dPxz_dz = (s_pexz[sx][sy][sz+1] - s_pexz[sx][sy][sz-1]) * 0.5f / dx;
         float Pe_term = - (dPxy_dy + dPxz_dz) * inv_ne;
 
-        Emfx[i][j][k] = E_ve - corner + Pe_term;
+        Emfx[i*Ni*Ni + j*Ni + k] = E_ve - corner + Pe_term;
     }
 
     // Emfy (x-z edge)
@@ -214,7 +212,7 @@ __global__ void utc_emf_kernel(const float* rho, const float* mx, const float* m
         float dPyz_dz = (s_peyz[sx][sy][sz+1] - s_peyz[sx][sy][sz-1]) * 0.5f / dx;
         float Pe_term = - (dPxy_dx + dPyz_dz) * inv_ne;
 
-        Emfy[i][j][k] = E_ve - corner + Pe_term;
+        Emfy[i*Ni*Ni + j*Ni + k] = E_ve - corner + Pe_term;
     }
 
     // Emfz (x-y edge)
@@ -241,15 +239,13 @@ __global__ void utc_emf_kernel(const float* rho, const float* mx, const float* m
         float dPyz_dy = (s_peyz[sx][sy+1][sz] - s_peyz[sx][sy-1][sz]) * 0.5f / dx;
         float Pe_term = - (dPxz_dx + dPyz_dy) * inv_ne;
 
-        Emfz[i][j][k] = E_ve - corner + Pe_term;
+        Emfz[i*Ni*Ni + j*Ni + k] = E_ve - corner + Pe_term;
     }
 }
 ''', 'utc_emf_kernel')
 
 # ====================== GHOST UPDATES ======================
 def update_ghosts():
-    """Vectorized periodic ghost cell updates."""
-    # Hydro + Energy + Psi
     for field in (rho, mx, my, mz, E_total, psi):
         field[:, :, :NG] = field[:, :, -NG:]
         field[:, :, -NG:] = field[:, :, NG:2*NG]
@@ -258,7 +254,6 @@ def update_ghosts():
         field[:NG, :, :] = field[-NG:, :, :]
         field[-NG:, :, :] = field[NG:2*NG, :, :]
 
-    # Magnetic Fields
     for field in (Bx, By, Bz):
         field[:, :, :NG] = field[:, :, -NG:]
         field[:, :, -NG:] = field[:, :, NG:2*NG]
@@ -267,7 +262,6 @@ def update_ghosts():
         field[:NG, :, :] = field[-NG:, :, :]
         field[-NG:, :, :] = field[NG:2*NG, :, :]
 
-    # Pressure tensor
     for p in (pe_xx, pe_yy, pe_zz, pe_xy, pe_xz, pe_yz):
         p[:, :, :NG] = p[:, :, -NG:]
         p[:, :, -NG:] = p[:, :, NG:2*NG]
@@ -298,7 +292,6 @@ while steps < max_steps:
     dt = min(dt_mhd, dt_hall, dt_max)
     dt_over_dx = dt / dx
 
-    # Launch EMF kernel
     utc_emf_kernel(
         grid_emf, (TILE_X, TILE_Y, TILE_Z), stream=cp.cuda.get_current_stream(),
         args=(rho, mx, my, mz, Bx, By, Bz,
@@ -306,10 +299,6 @@ while steps < max_steps:
               Emfx, Emfy, Emfz,
               Ni, hall_coeff, dx, dt_over_dx, base_bias)
     )
-
-    # RK3 blend (expand with your graph if needed)
-    rho = (1.0/3.0)*rho + (2.0/3.0)*rho3
-    # ... add other fields as needed
 
     steps += 1
     if steps % print_interval == 0:
