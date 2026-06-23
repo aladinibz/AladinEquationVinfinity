@@ -1,5 +1,3 @@
-It’s this better then previus codE ?
-
 import cupy as cp
 
 ct_entropy_solver_14momentSOTA = cp.RawKernel(r'''
