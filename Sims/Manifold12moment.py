@@ -117,14 +117,14 @@ __device__ void moments_only(const float* lambda, float alpha_par, float alpha_p
 }
 
 __device__ bool chol_solve_reduced(float* A, float* b, float* x) {
-    for (int i = 1; i < N_FEAT; ++i) A[i*N_FEAT + i] += 1e-7f;
+    for (int i = 1; i < N_FEAT; ++i) A[i*N_FEAT + i] += 1e-6f;
     float L[N_FEAT*N_FEAT] = {0};
     for (int i = 1; i < N_FEAT; ++i) {
         for (int j = 1; j <= i; ++j) {
             float s = A[i*N_FEAT + j];
             for (int k = 1; k < j; ++k) s -= L[i*N_FEAT + k]*L[j*N_FEAT + k];
             if (i == j) {
-                if (s < 1e-14f) return false;
+                if (s < 1e-12f) return false;
                 L[i*N_FEAT + j] = sqrtf(s);
             } else L[i*N_FEAT + j] = s / L[j*N_FEAT + j];
         }
@@ -180,6 +180,13 @@ void gyrotropic_12_kernel(
     lambda[4]=l1.x; lambda[5]=l1.y; lambda[6]=l1.z; lambda[7]=l1.w;
     lambda[8]=l2.x; lambda[9]=l2.y; lambda[10]=l2.z; lambda[11]=l2.w;
 
+    // safe initial guess
+    lambda[6]  = -0.1f;
+    lambda[7]  = -0.1f;
+    lambda[8]  = -0.1f;
+    lambda[10] = -0.05f;
+    lambda[11] = -0.05f;
+
     project_moments(Mt);
     project_lambda(lambda);
     #pragma unroll
@@ -207,9 +214,10 @@ void gyrotropic_12_kernel(
         #pragma unroll
         for (int k = 1; k < N_FEAT; ++k) r[k] = M[k] - Mt[k];
         if (!chol_solve_reduced(G, r, dlam)) { flag = 2; break; }
-        float alpha = 0.75f;
+
+        float alpha = 1.0f;
         bool ok = false;
-        for (int ls = 0; ls < 3; ++ls) {
+        for (int ls = 0; ls < 6; ++ls) {
             float trial[N_FEAT];
             #pragma unroll
             for (int k = 0; k < N_FEAT; ++k) trial[k] = lambda[k] - alpha * dlam[k];
@@ -219,7 +227,7 @@ void gyrotropic_12_kernel(
             float max_rt = 0.0f;
             #pragma unroll
             for (int k = 1; k < N_FEAT; ++k) max_rt = fmaxf(max_rt, fabsf(Mtst[k]-Mt[k]));
-            if (max_rt < max_r) {
+            if (max_rt <= max_r * 1.01f) {
                 #pragma unroll
                 for (int k = 0; k < N_FEAT; ++k) lambda[k] = trial[k];
                 ok = true;
@@ -262,12 +270,14 @@ void gyrotropic_12_kernel(
 }
 ''', 'gyrotropic_12_kernel')
 
-# ---- simple test ----
+# ---- test ----
 Ncells = 4096
 M_target = cp.zeros((Ncells, 12), dtype=cp.float32)
 M_target[:, 0] = 1.0
 M_target[:, 2] = 1.0
 M_target[:, 3] = 1.0
+M_target[:, 4] = 0.1
+M_target[:, 5] = 0.05
 n_in = cp.ones(Ncells, dtype=cp.float32)
 lambda_io = cp.zeros((Ncells, 12), dtype=cp.float32)
 n_out = cp.empty(Ncells, dtype=cp.float32)
@@ -286,9 +296,7 @@ gyrotropic_12_kernel(
      n_out, upar, Ppar, Pperp, qpar, qperp,
      status, Ncells, 1.0, 1.0, 0.5, 0.5)
 )
-
 print("status unique:", cp.unique(status))
 print("Ppar sample:", Ppar[:4])
 print("Pperp sample:", Pperp[:4])
 print("max |qpar|, |qperp|:", float(cp.max(cp.abs(qpar))), float(cp.max(cp.abs(qperp))))
-print("Done.")
