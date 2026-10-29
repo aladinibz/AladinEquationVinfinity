@@ -3,8 +3,8 @@ import cupy as cp
 gyrotropic_12_kernel = cp.RawKernel(r'''
 #define N_FEAT 12
 #define N_FREE 9
-#define MAX_NEWTON 4
-#define RES_TOL 2.5e-4f
+#define MAX_NEWTON 8
+#define RES_TOL 5e-4f
 
 __device__ __forceinline__ void eval_phi(float cp, float c2, float p[N_FEAT]) {
     float cp2 = cp*cp, cp3 = cp2*cp, cp4 = cp2*cp2;
@@ -194,7 +194,8 @@ void gyrotropic_12_kernel(
     int flag = 0;
     if (Mt[2] < 1e-8f || Mt[3] < 1e-8f) flag = 5;
 
-    float eta = -0.6f, zeta = -0.6f, xi = 0.f, low[6] = {0};
+    // closer initial guess for unit Maxwellian
+    float eta = -0.4f, zeta = -0.4f, xi = 0.f, low[6] = {0};
     float ap = fmaxf(alpha_par, 0.3f), ae = fmaxf(alpha_perp, 0.3f);
     float lambda_lm = 1e-3f;
 
