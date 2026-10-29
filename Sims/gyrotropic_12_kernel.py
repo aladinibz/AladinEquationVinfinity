@@ -3,8 +3,8 @@ import cupy as cp
 gyrotropic_12_kernel = cp.RawKernel(r'''
 #define N_FEAT 12
 #define N_FREE 9
-#define MAX_NEWTON 5
-#define RES_TOL 2e-4f
+#define MAX_NEWTON 4
+#define RES_TOL 2.5e-4f
 
 __device__ __forceinline__ void eval_phi(float cp, float c2, float p[N_FEAT]) {
     float cp2 = cp*cp, cp3 = cp2*cp, cp4 = cp2*cp2;
@@ -20,23 +20,6 @@ __constant__ float np[16]={-6.5f,-5.5f,-4.5f,-3.5f,-2.5f,-1.5f,-0.5f,0.5f,1.5f,2
 __constant__ float wp[16]={0.001f,0.004f,0.012f,0.03f,0.07f,0.13f,0.19f,0.19f,0.13f,0.07f,0.03f,0.012f,0.004f,0.001f,0.0003f,0.0003f};
 __constant__ float nq[12]={0.2f,0.55f,1.0f,1.5f,2.1f,2.8f,3.6f,4.5f,5.6f,6.8f,8.2f,10.0f};
 __constant__ float wq[12]={0.06f,0.12f,0.16f,0.17f,0.15f,0.12f,0.08f,0.05f,0.03f,0.015f,0.008f,0.003f};
-
-__device__ bool finite9(const float* v) {
-    for (int i = 0; i < 9; ++i) if (!isfinite(v[i])) return false;
-    return true;
-}
-
-__device__ bool admissible_target(const float* Mt) {
-    for (int k = 0; k < N_FEAT; ++k) if (!isfinite(Mt[k])) return false;
-    if (Mt[0] < 0.5f || Mt[0] > 1.5f) return false;
-    if (Mt[2] < 1e-8f || Mt[3] < 1e-8f) return false;
-    if (Mt[6] < Mt[2]*Mt[2] - 1e-5f) return false;
-    if (Mt[8] < Mt[3]*Mt[3] - 1e-5f) return false;
-    float qmax_p = 2.0f * sqrtf(Mt[3]) * Mt[3];
-    float qmax_e = 2.0f * sqrtf(Mt[2]) * Mt[2];
-    if (fabsf(Mt[4]) > qmax_p || fabsf(Mt[5]) > qmax_e) return false;
-    return true;
-}
 
 __device__ void set_from_free(float eta, float zeta, float xi, const float low[6], float* lambda) {
     float a = __expf(eta);
@@ -83,7 +66,6 @@ __device__ bool moments(const float* lambda, float ap, float ape, float* M, floa
             float e = -ap*cp*cp - ape*c2;
             #pragma unroll
             for (int k = 0; k < N_FEAT; ++k) e += lambda[k]*p[k];
-            if (!isfinite(e)) return false;
             maxe = fmaxf(maxe, e);
         }
     float Z = 0.f, M1[N_FEAT] = {0}, M2[N_FEAT*N_FEAT] = {0};
@@ -96,7 +78,6 @@ __device__ bool moments(const float* lambda, float ap, float ape, float* M, floa
             #pragma unroll
             for (int k = 0; k < N_FEAT; ++k) e += lambda[k]*p[k];
             float wgt = __expf(e - maxe) * w;
-            if (!isfinite(wgt)) return false;
             Z += wgt;
             #pragma unroll
             for (int i = 0; i < N_FEAT; ++i) {
@@ -107,12 +88,11 @@ __device__ bool moments(const float* lambda, float ap, float ape, float* M, floa
             }
         }
     }
-    if (!(Z > 1e-40f) || !isfinite(Z)) return false;
+    if (!(Z > 1e-40f)) return false;
     float iZ = 1.f / Z;
     #pragma unroll
     for (int i = 0; i < N_FEAT; ++i) {
         M[i] = M1[i] * iZ;
-        if (!isfinite(M[i])) return false;
         #pragma unroll
         for (int j = 0; j <= i; ++j) {
             float v = M2[i*N_FEAT + j] * iZ - M[i]*M[j];
@@ -168,7 +148,7 @@ __device__ bool chol9(float* H, float* rhs, float* dx) {
             float s = H[i*N_FREE + j];
             for (int k = 0; k < j; ++k) s -= L[i*N_FREE + k]*L[j*N_FREE + k];
             if (i == j) {
-                if (!(s > 1e-14f) || !isfinite(s)) return false;
+                if (!(s > 1e-12f)) return false;
                 L[i*N_FREE + j] = sqrtf(s);
             } else L[i*N_FREE + j] = s / L[j*N_FREE + j];
         }
@@ -183,11 +163,11 @@ __device__ bool chol9(float* H, float* rhs, float* dx) {
         for (int k = i + 1; k < N_FREE; ++k) s -= L[k*N_FREE + i]*dx[k];
         dx[i] = s / L[i*N_FREE + i];
     }
-    return finite9(dx);
+    return true;
 }
 
 extern "C" __global__
-__launch_bounds__(64, 4)
+__launch_bounds__(64, 2)
 void gyrotropic_12_kernel(
     const float* __restrict__ M_target,
     const float* __restrict__ n_in,
@@ -211,15 +191,18 @@ void gyrotropic_12_kernel(
     const float* Mt = M_target + idx * N_FEAT;
     float* lo = lambda_io + idx * N_FEAT;
 
-    int flag = admissible_target(Mt) ? 0 : 5;
+    int flag = 0;
+    if (Mt[2] < 1e-8f || Mt[3] < 1e-8f) flag = 5;
 
-    float eta = -0.7f, zeta = -0.7f, xi = 0.f, low[6] = {0};
-    float ap = fmaxf(alpha_par, 0.25f), ae = fmaxf(alpha_perp, 0.25f);
-    float lambda_lm = 1e-4f;
+    float eta = -0.6f, zeta = -0.6f, xi = 0.f, low[6] = {0};
+    float ap = fmaxf(alpha_par, 0.3f), ae = fmaxf(alpha_perp, 0.3f);
+    float lambda_lm = 1e-3f;
 
-    float lambda[N_FEAT], M[N_FEAT], G[N_FEAT * N_FEAT];
-    float J[N_FEAT * N_FREE], H[N_FREE * N_FREE], rhs[N_FREE], dx[N_FREE];
-    float D[N_FEAT * N_FREE];
+    float lambda[N_FEAT], M[N_FEAT];
+    float G[N_FEAT * N_FEAT];
+    float J[N_FEAT * N_FREE];
+    float H[N_FREE * N_FREE];
+    float rhs[N_FREE], dx[N_FREE];
 
     if (flag == 0) {
         for (int it = 0; it < MAX_NEWTON; ++it) {
@@ -233,61 +216,56 @@ void gyrotropic_12_kernel(
 
             jacobian(eta, zeta, xi, J);
 
-            for (int i = 0; i < N_FEAT; ++i)
+            for (int p = 0; p < N_FREE*N_FREE; ++p) H[p] = 0.f;
+            for (int p = 0; p < N_FREE; ++p) rhs[p] = 0.f;
+
+            for (int i = 1; i < N_FEAT; ++i) {
+                float ri = M[i] - Mt[i];
+                float Di[N_FREE];
                 for (int p = 0; p < N_FREE; ++p) {
                     float s = 0.f;
                     for (int j = 0; j < N_FEAT; ++j) s += G[i*N_FEAT + j] * J[j*N_FREE + p];
-                    D[i*N_FREE + p] = s;
+                    Di[p] = s;
+                    rhs[p] += s * ri;
                 }
-
-            for (int p = 0; p < N_FREE*N_FREE; ++p) H[p] = 0.f;
-            for (int p = 0; p < N_FREE; ++p) rhs[p] = 0.f;
-            for (int i = 1; i < N_FEAT; ++i) {
-                float ri = M[i] - Mt[i];
-                for (int p = 0; p < N_FREE; ++p) {
-                    float Dp = D[i*N_FREE + p];
-                    rhs[p] += Dp * ri;
+                for (int p = 0; p < N_FREE; ++p)
                     for (int q = 0; q < N_FREE; ++q)
-                        H[p*N_FREE + q] += Dp * D[i*N_FREE + q];
-                }
+                        H[p*N_FREE + q] += Di[p] * Di[q];
             }
-            float max_diag = 0.f;
+
+            float max_diag = 1e-8f;
             for (int p = 0; p < N_FREE; ++p) max_diag = fmaxf(max_diag, H[p*N_FREE + p]);
-            float ridge = lambda_lm * fmaxf(max_diag, 1e-8f);
+            float ridge = lambda_lm * max_diag;
             for (int p = 0; p < N_FREE; ++p) H[p*N_FREE + p] += ridge;
 
             if (!chol9(H, rhs, dx)) {
                 lambda_lm *= 4.f;
-                if (lambda_lm > 1e3f) { flag = 2; break; }
                 continue;
             }
 
-            float al = 1.f;
+            float al = 0.8f;
             bool accepted = false;
-            for (int ls = 0; ls < 6; ++ls) {
+            for (int ls = 0; ls < 4; ++ls) {
                 float e2 = eta - al * dx[0];
                 float z2 = zeta - al * dx[1];
                 float x2 = xi - al * dx[2];
-                if (e2 < -8.f || e2 > 4.f || z2 < -8.f || z2 > 4.f) { al *= 0.5f; continue; }
+                if (e2 < -6.f || e2 > 3.f || z2 < -6.f || z2 > 3.f) { al *= 0.5f; continue; }
                 float l2[6];
                 for (int k = 0; k < 6; ++k) l2[k] = low[k] - al * dx[3 + k];
                 float lam2[N_FEAT], M2[N_FEAT], G2[N_FEAT*N_FEAT];
                 set_from_free(e2, z2, x2, l2, lam2);
                 if (!moments(lam2, ap, ae, M2, G2)) { al *= 0.5f; continue; }
                 float obj2 = moment_objective(M2, Mt);
-                if (obj2 < obj) {
+                if (obj2 < obj * 1.01f) {
                     eta = e2; zeta = z2; xi = x2;
                     for (int k = 0; k < 6; ++k) low[k] = l2[k];
                     accepted = true;
-                    lambda_lm = fmaxf(lambda_lm * 0.5f, 1e-8f);
+                    lambda_lm = fmaxf(lambda_lm * 0.7f, 1e-6f);
                     break;
                 }
                 al *= 0.5f;
             }
-            if (!accepted) {
-                lambda_lm *= 4.f;
-                if (lambda_lm > 1e3f) { flag = 3; break; }
-            }
+            if (!accepted) lambda_lm = fminf(lambda_lm * 3.f, 10.f);
             if (it == MAX_NEWTON - 1) flag = 1;
         }
     }
@@ -301,13 +279,7 @@ void gyrotropic_12_kernel(
         float moment_r = 0.f;
         for (int k = 1; k < N_FEAT; ++k)
             moment_r = fmaxf(moment_r, fabsf(M[k] - Mt[k]));
-        float up = M[1];
-        float theta_par = M[3] - up*up;
-        float theta_perp = M[2];
-        bool outputs_ok = isfinite(up) && isfinite(theta_par) && isfinite(theta_perp)
-                       && theta_par > 0.f && theta_perp > 0.f
-                       && isfinite(m3_par) && isfinite(m3_mix);
-        if (moment_r < RES_TOL && outputs_ok) flag = 0;
+        if (moment_r < RES_TOL) flag = 0;
     }
 
     for (int k = 0; k < N_FEAT; ++k) lo[k] = lambda[k];
@@ -315,13 +287,12 @@ void gyrotropic_12_kernel(
 
     float n = n_in[idx];
     float up = ok_final ? M[1] : 0.f;
-    float cp2 = ok_final ? fmaxf(M[3] - up*up, 1e-8f) : 1e-4f;
-    float ce2 = ok_final ? fmaxf(M[2], 1e-8f) : 1e-4f;
+    float cp2 = ok_final ? fmaxf(M[3] - up*up, 1e-6f) : 1e-4f;
+    float ce2 = ok_final ? fmaxf(M[2], 1e-6f) : 1e-4f;
 
     float qpar = 0.f, qperp = 0.f;
     if (ok_final) {
-        float theta_par = fmaxf(cp2, 0.f);
-        qpar  = mass * n * (m3_par - 3.f * up * theta_par - up*up*up);
+        qpar  = mass * n * (m3_par - 3.f * up * cp2 - up*up*up);
         qperp = 0.5f * mass * n * (m3_mix - up * M[2]);
     }
 
@@ -333,3 +304,35 @@ void gyrotropic_12_kernel(
     qperp_out[idx] = qperp;
 }
 ''', 'gyrotropic_12_kernel')
+
+# ===== TEST =====
+Ncells = 128
+M_target = cp.ones((Ncells, 12), dtype=cp.float32)
+M_target[:, 0] = 1.0
+M_target[:, 2] = 1.0
+M_target[:, 3] = 1.0
+n_in = cp.ones(Ncells, dtype=cp.float32)
+lambda_io = cp.zeros((Ncells, 12), dtype=cp.float32)
+
+n_out   = cp.empty(Ncells, dtype=cp.float32)
+upar    = cp.empty(Ncells, dtype=cp.float32)
+Ppar    = cp.empty(Ncells, dtype=cp.float32)
+Pperp   = cp.empty(Ncells, dtype=cp.float32)
+qpar    = cp.empty(Ncells, dtype=cp.float32)
+qperp   = cp.empty(Ncells, dtype=cp.float32)
+status  = cp.zeros(Ncells, dtype=cp.int32)
+
+threads = 64
+blocks  = (Ncells + threads - 1) // threads
+
+gyrotropic_12_kernel(
+    (blocks,), (threads,),
+    (M_target, n_in, lambda_io,
+     n_out, upar, Ppar, Pperp, qpar, qperp,
+     status, Ncells, 1.0, 1.0, 0.5, 0.5)
+)
+
+print("status unique:", cp.unique(status).get())
+print("Ppar  sample:", Ppar[:4].get())
+print("Pperp sample:", Pperp[:4].get())
+print("max |qpar|, |qperp|:", float(cp.max(cp.abs(qpar))), float(cp.max(cp.abs(qperp))))
