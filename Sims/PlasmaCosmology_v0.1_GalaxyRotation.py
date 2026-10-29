@@ -1,205 +1,338 @@
 import cupy as cp
-import numpy as np
-import matplotlib.pyplot as plt
 
-print("🚀 Plasma Cosmology v0.1 - Galaxy Rotation [COMPLETE RUNNABLE]")
+gyrotropic_12_kernel = cp.RawKernel(r'''
+#define N_FEAT 12
+#define N_FREE 9
+#define MAX_NEWTON 4
+#define RES_TOL 2.5e-4f
 
-# ====================== PARAMETERS ======================
-N = 256
-L = 1.0
-dx = L / N
-cfl = 0.14
-max_steps = 1000
-print_interval = 50
-plot_interval = 200
-NG = 3
-Ni = N + 2 * NG
-gamma = 5.0 / 3.0
-G = 1.0
-
-# ====================== FIELDS ======================
-rho = cp.ones((Ni, Ni, Ni), dtype=cp.float32) * 1.0
-mx = cp.zeros((Ni, Ni, Ni), dtype=cp.float32)
-my = cp.zeros((Ni, Ni, Ni), dtype=cp.float32)
-mz = cp.zeros((Ni, Ni, Ni), dtype=cp.float32)
-E_total = cp.ones((Ni, Ni, Ni), dtype=cp.float32) * 2.8
-
-Bx = cp.zeros((Ni+1, Ni, Ni), dtype=cp.float32)
-By = cp.zeros((Ni, Ni+1, Ni), dtype=cp.float32)
-Bz = cp.zeros((Ni, Ni, Ni+1), dtype=cp.float32)
-
-rho_new = cp.zeros_like(rho)
-mx_new = cp.zeros_like(mx)
-my_new = cp.zeros_like(my)
-mz_new = cp.zeros_like(mz)
-E_new = cp.zeros_like(E_total)
-
-# ====================== INITIAL CONDITIONS ======================
-np.random.seed(42)
-x = cp.linspace(-L/2, L/2, N)
-y = cp.linspace(-L/2, L/2, N)
-X, Y = cp.meshgrid(x, y)
-R = cp.sqrt(X**2 + Y**2)
-R = cp.maximum(R, 0.12)
-
-# Strong Toroidal B (Z-pinch)
-B_phi = 1.28 / (R + 0.09)
-theta = cp.arctan2(Y, X)
-Bx_tor = -B_phi * cp.sin(theta)
-By_tor =  B_phi * cp.cos(theta)
-
-Bx[NG:Ni-NG+1, NG:Ni-NG, NG:Ni-NG] += Bx_tor
-By[NG:Ni-NG, NG:Ni-NG+1, NG:Ni-NG] += By_tor
-
-# Rotation seed
-v_theta = 1.22 * R / (R + 0.28)
-vx_seed = v_theta * (-cp.sin(theta)) * 0.93
-vy_seed = v_theta * cp.cos(theta) * 0.93
-mx[NG:Ni-NG, NG:Ni-NG, NG:Ni-NG] += vx_seed * rho[NG:Ni-NG, NG:Ni-NG, NG:Ni-NG]
-my[NG:Ni-NG, NG:Ni-NG, NG:Ni-NG] += vy_seed * rho[NG:Ni-NG, NG:Ni-NG, NG:Ni-NG]
-
-def update_ghosts():
-    fields = [rho, mx, my, mz, E_total]
-    for f in fields:
-        f[:NG] = f[-2*NG:-NG]
-        f[-NG:] = f[NG:2*NG]
-        f[:,:NG] = f[:,-2*NG:-NG]
-        f[:,-NG:] = f[:,NG:2*NG]
-        f[:,:,:NG] = f[:,:,-2*NG:-NG]
-        f[:,:,-NG:] = f[:,:,NG:2*NG]
-
-# ====================== FULL HLLD X KERNEL ======================
-hlld_x_kernel = cp.RawKernel(r'''
-#define NG 3
-extern "C" __global__ void hlld_x_kernel(float* rho, float* mx, float* my, float* mz, float* E,
-    float* Bx, float* By, float* Bz,
-    float* rho_new, float* mx_new, float* my_new, float* mz_new, float* E_new,
-    int Ni, float dt_dx, float gamma) {
-
-    int tx = threadIdx.x, ty = threadIdx.y, tz = threadIdx.z;
-    int i = blockIdx.x * blockDim.x + tx + NG;
-    int j = blockIdx.y * blockDim.y + ty + NG;
-    int k = blockIdx.z * blockDim.z + tz + NG;
-
-    if (i >= Ni-NG-1 || j >= Ni-NG || k >= Ni-NG) return;
-
-    int idxL = i*Ni*Ni + j*Ni + k;
-    int idxR = (i+1)*Ni*Ni + j*Ni + k;
-
-    float rhoL = fmaxf(rho[idxL],1e-8f), vxL = mx[idxL]/rhoL, vyL = my[idxL]/rhoL, vzL = mz[idxL]/rhoL;
-    float pL = fmaxf((gamma-1)*(E[idxL] - 0.5*rhoL*(vxL*vxL+vyL*vyL+vzL*vzL) - 0.5*(Bx[idxL]*Bx[idxL]+By[idxL]*By[idxL]+Bz[idxL]*Bz[idxL])),1e-6f);
-
-    float rhoR = fmaxf(rho[idxR],1e-8f), vxR = mx[idxR]/rhoR, vyR = my[idxR]/rhoR, vzR = mz[idxR]/rhoR;
-    float pR = fmaxf((gamma-1)*(E[idxR] - 0.5*rhoR*(vxR*vxR+vyR*vyR+vzR*vzR) - 0.5*(Bx[idxR]*Bx[idxR]+By[idxR]*By[idxR]+Bz[idxR]*Bz[idxR])),1e-6f);
-
-    float BxL = Bx[idxL], BxR = Bx[idxR];
-    float ByL = By[idxL], ByR = By[idxR];
-    float BzL = Bz[idxL], BzR = Bz[idxR];
-
-    float cfL = sqrt(gamma*pL/rhoL + (BxL*BxL+ByL*ByL+BzL*BzL)/rhoL);
-    float cfR = sqrt(gamma*pR/rhoR + (BxR*BxR+ByR*ByR+BzR*BzR)/rhoR);
-
-    float SL = min(vxL - cfL, vxR - cfR);
-    float SR = max(vxL + cfL, vxR + cfR);
-
-    float Sstar = (pR - pL + rhoL*vxL*(SL-vxL) - rhoR*vxR*(SR-vxR)) / 
-                  (rhoL*(SL-vxL) - rhoR*(SR-vxR) + 1e-12f);
-
-    float frhoL = rhoL * vxL, frhoR = rhoR * vxR;
-    float frho = (SL > 0) ? frhoL : (SR < 0) ? frhoR : (SR*frhoL - SL*frhoR + SL*SR*(rhoR-rhoL)) / (SR-SL);
-
-    float fmxL = rhoL*vxL*vxL + pL + 0.5*(ByL*ByL + BzL*BzL) - BxL*BxL;
-    float fmxR = rhoR*vxR*vxR + pR + 0.5*(ByR*ByR + BzR*BzR) - BxR*BxR;
-    float fmx = (SL > 0) ? fmxL : (SR < 0) ? fmxR : (SR*fmxL - SL*fmxR + SL*SR*(mx[idxR]-mx[idxL])) / (SR-SL);
-
-    float feL = (E[idxL] + pL + 0.5*(ByL*ByL + BzL*BzL)) * vxL - BxL*(BxL*vxL + ByL*vyL + BzL*vzL);
-    float feR = (E[idxR] + pR + 0.5*(ByR*ByR + BzR*BzR)) * vxR - BxR*(BxR*vxR + ByR*vyR + BzR*vzR);
-    float fe = (SL > 0) ? feL : (SR < 0) ? feR : (SR*feL - SL*feR + SL*SR*(E[idxR]-E[idxL])) / (SR-SL);
-
-    rho_new[idxL] = rho[idxL] - dt_dx * (frho - frho);
-    mx_new[idxL] = mx[idxL] - dt_dx * (fmx - fmx);
-    E_new[idxL] = E[idxL] - dt_dx * (fe - fe);
+__device__ __forceinline__ void eval_phi(float cp, float c2, float p[N_FEAT]) {
+    float cp2 = cp*cp, cp3 = cp2*cp, cp4 = cp2*cp2;
+    float c4 = c2*c2, c6 = c4*c2;
+    float idp = 1.f/(1.f+cp2), ide = 1.f/(1.f+c2);
+    p[0]=1.f; p[1]=cp; p[2]=c2; p[3]=cp2;
+    p[4]=cp*idp; p[5]=cp*c2*ide;
+    p[6]=c4; p[7]=cp2*c2; p[8]=cp4;
+    p[9]=cp3*idp*idp; p[10]=c6*ide; p[11]=cp2*c4*ide;
 }
-''', 'hlld_x_kernel')
 
-# ====================== FFT SELF-GRAVITY ======================
-def add_self_gravity(dt):
-    rho_c = rho[NG:Ni-NG, NG:Ni-NG, NG:Ni-NG]
-    rho_hat = cp.fft.fftn(rho_c)
-    kx = cp.fft.fftfreq(N, d=dx) * 2 * np.pi
-    ky = cp.fft.fftfreq(N, d=dx) * 2 * np.pi
-    kz = cp.fft.fftfreq(N, d=dx) * 2 * np.pi
-    KX, KY, KZ = cp.meshgrid(kx, ky, kz, indexing='ij')
-    k2 = KX**2 + KY**2 + KZ**2 + 1e-12
-    phi_hat = -4 * np.pi * G * rho_hat / k2
-    phi = cp.real(cp.fft.ifftn(phi_hat))
+__constant__ float np[16]={-6.5f,-5.5f,-4.5f,-3.5f,-2.5f,-1.5f,-0.5f,0.5f,1.5f,2.5f,3.5f,4.5f,5.5f,6.5f,7.5f,-7.5f};
+__constant__ float wp[16]={0.001f,0.004f,0.012f,0.03f,0.07f,0.13f,0.19f,0.19f,0.13f,0.07f,0.03f,0.012f,0.004f,0.001f,0.0003f,0.0003f};
+__constant__ float nq[12]={0.2f,0.55f,1.0f,1.5f,2.1f,2.8f,3.6f,4.5f,5.6f,6.8f,8.2f,10.0f};
+__constant__ float wq[12]={0.06f,0.12f,0.16f,0.17f,0.15f,0.12f,0.08f,0.05f,0.03f,0.015f,0.008f,0.003f};
 
-    gx = -(phi[2:,:,:] - phi[:-2,:,:]) / (2*dx)
-    gy = -(phi[:,2:,:] - phi[:,:-2,:]) / (2*dx)
-    gz = -(phi[:,:,2:] - phi[:,:,:-2]) / (2*dx)
+__device__ void set_from_free(float eta, float zeta, float xi, const float low[6], float* lambda) {
+    float a = __expf(eta);
+    float b = __expf(zeta);
+    float s = 0.95f * tanhf(xi);
+    float A = a*a, B = b*b, C = 2.f*a*b*s;
+    lambda[0] = 0.f;
+    lambda[1] = low[0]; lambda[2] = low[1]; lambda[3] = low[2];
+    lambda[4] = low[3]; lambda[5] = low[4]; lambda[9] = low[5];
+    lambda[6] = lambda[10] = -0.5f * B;
+    lambda[7] = lambda[11] = -0.5f * C;
+    lambda[8] = -A;
+}
 
-    idx = slice(NG+1, Ni-NG-1)
-    mx[idx,idx,idx] += rho[idx,idx,idx] * gx * dt
-    my[idx,idx,idx] += rho[idx,idx,idx] * gy * dt
-    mz[idx,idx,idx] += rho[idx,idx,idx] * gz * dt
-    E_total[idx,idx,idx] += (mx[idx,idx,idx]*gx + my[idx,idx,idx]*gy + mz[idx,idx,idx]*gz) * dt
+__device__ void jacobian(float eta, float zeta, float xi, float* J) {
+    for (int i = 0; i < N_FEAT * N_FREE; ++i) J[i] = 0.f;
+    float a = __expf(eta), b = __expf(zeta);
+    float th = tanhf(xi), s = 0.95f * th, ds = 0.95f * (1.f - th*th);
+    J[8*N_FREE + 0] = -2.f * a * a;
+    J[6*N_FREE + 1] = J[10*N_FREE + 1] = -b * b;
+    float abs_ = a * b * s;
+    J[7*N_FREE + 0] = J[11*N_FREE + 0] = -abs_;
+    J[7*N_FREE + 1] = J[11*N_FREE + 1] = -abs_;
+    J[7*N_FREE + 2] = J[11*N_FREE + 2] = -a * b * ds;
+    J[1*N_FREE + 3] = 1.f; J[2*N_FREE + 4] = 1.f; J[3*N_FREE + 5] = 1.f;
+    J[4*N_FREE + 6] = 1.f; J[5*N_FREE + 7] = 1.f; J[9*N_FREE + 8] = 1.f;
+}
 
-# ====================== DIAGNOSTICS ======================
-def plot_rotation_curve(step):
-    rho_c = rho[NG:Ni-NG, NG:Ni-NG, NG:Ni-NG].get()
-    mx_c = mx[NG:Ni-NG, NG:Ni-NG, NG:Ni-NG].get()
-    my_c = my[NG:Ni-NG, NG:Ni-NG, NG:Ni-NG].get()
-    x = np.linspace(-L/2, L/2, N)
-    X, Y = np.meshgrid(x, x)
-    R = np.sqrt(X**2 + Y**2)
-    mask = R > 0.05
-    v_phi = (-Y*mx_c + X*my_c) / (R * rho_c + 1e-8)
-    r_bins = np.linspace(0.1, L/2, 40)
-    v_mean = [np.mean(np.abs(v_phi[(R>=r_bins[i]) & (R<r_bins[i+1]) & mask])) for i in range(len(r_bins)-1)]
-    plt.plot(r_bins[:-1], v_mean, 'b-', linewidth=2.5, label='v_φ')
-    plt.axhline(0.9, color='r', linestyle='--', label='Target flat')
-    plt.title(f'Rotation Curve - Step {step}')
-    plt.xlabel('Radius')
-    plt.ylabel('v_φ')
-    plt.legend()
-    plt.grid(True)
-    plt.savefig(f'rotation_curve_step_{step:04d}.png')
-    plt.close()
+__device__ float moment_objective(const float* M, const float* Mt) {
+    float obj = 0.f;
+    for (int k = 1; k < N_FEAT; ++k) {
+        float r = M[k] - Mt[k];
+        obj += 0.5f * r * r;
+    }
+    return obj;
+}
 
-# ====================== MAIN LOOP ======================
-steps = 0
-dt = 2.2e-5
+__device__ bool moments(const float* lambda, float ap, float ape, float* M, float* G) {
+    float maxe = -1e30f;
+    for (int ip = 0; ip < 16; ++ip)
+        for (int iq = 0; iq < 12; ++iq) {
+            float cp = np[ip], c2 = nq[iq]*nq[iq], p[N_FEAT];
+            eval_phi(cp, c2, p);
+            float e = -ap*cp*cp - ape*c2;
+            #pragma unroll
+            for (int k = 0; k < N_FEAT; ++k) e += lambda[k]*p[k];
+            maxe = fmaxf(maxe, e);
+        }
+    float Z = 0.f, M1[N_FEAT] = {0}, M2[N_FEAT*N_FEAT] = {0};
+    for (int ip = 0; ip < 16; ++ip) {
+        float cp = np[ip], wp_ = wp[ip];
+        for (int iq = 0; iq < 12; ++iq) {
+            float c2 = nq[iq]*nq[iq], w = wp_*wq[iq]*nq[iq], p[N_FEAT];
+            eval_phi(cp, c2, p);
+            float e = -ap*cp*cp - ape*c2;
+            #pragma unroll
+            for (int k = 0; k < N_FEAT; ++k) e += lambda[k]*p[k];
+            float wgt = __expf(e - maxe) * w;
+            Z += wgt;
+            #pragma unroll
+            for (int i = 0; i < N_FEAT; ++i) {
+                float wi = wgt * p[i];
+                M1[i] += wi;
+                #pragma unroll
+                for (int j = 0; j <= i; ++j) M2[i*N_FEAT + j] += wi * p[j];
+            }
+        }
+    }
+    if (!(Z > 1e-40f)) return false;
+    float iZ = 1.f / Z;
+    #pragma unroll
+    for (int i = 0; i < N_FEAT; ++i) {
+        M[i] = M1[i] * iZ;
+        #pragma unroll
+        for (int j = 0; j <= i; ++j) {
+            float v = M2[i*N_FEAT + j] * iZ - M[i]*M[j];
+            G[i*N_FEAT + j] = G[j*N_FEAT + i] = v;
+        }
+    }
+    return true;
+}
 
-while steps < max_steps:
-    update_ghosts()
+__device__ bool moments_final(const float* lambda, float ap, float ape,
+                              float* M, float* m3_par, float* m3_mix) {
+    float maxe = -1e30f;
+    for (int ip = 0; ip < 16; ++ip)
+        for (int iq = 0; iq < 12; ++iq) {
+            float cp = np[ip], c2 = nq[iq]*nq[iq], p[N_FEAT];
+            eval_phi(cp, c2, p);
+            float e = -ap*cp*cp - ape*c2;
+            #pragma unroll
+            for (int k = 0; k < N_FEAT; ++k) e += lambda[k]*p[k];
+            maxe = fmaxf(maxe, e);
+        }
+    float Z = 0.f, M1[N_FEAT] = {0};
+    float acc_par = 0.f, acc_mix = 0.f;
+    for (int ip = 0; ip < 16; ++ip) {
+        float cp = np[ip], wp_ = wp[ip];
+        for (int iq = 0; iq < 12; ++iq) {
+            float c2 = nq[iq]*nq[iq], w = wp_*wq[iq]*nq[iq], p[N_FEAT];
+            eval_phi(cp, c2, p);
+            float e = -ap*cp*cp - ape*c2;
+            #pragma unroll
+            for (int k = 0; k < N_FEAT; ++k) e += lambda[k]*p[k];
+            float wgt = __expf(e - maxe) * w;
+            Z += wgt;
+            acc_par += wgt * (cp*cp*cp);
+            acc_mix += wgt * (cp * c2);
+            #pragma unroll
+            for (int i = 0; i < N_FEAT; ++i) M1[i] += wgt * p[i];
+        }
+    }
+    if (!(Z > 1e-40f)) return false;
+    float iZ = 1.f / Z;
+    #pragma unroll
+    for (int i = 0; i < N_FEAT; ++i) M[i] = M1[i] * iZ;
+    *m3_par = acc_par * iZ;
+    *m3_mix = acc_mix * iZ;
+    return true;
+}
 
-    block = (8, 8, 4)
-    grid = ((N + 7)//8, (N + 7)//8, (N + 3)//4)
+__device__ bool chol9(float* H, float* rhs, float* dx) {
+    float L[N_FREE*N_FREE] = {0};
+    for (int i = 0; i < N_FREE; ++i)
+        for (int j = 0; j <= i; ++j) {
+            float s = H[i*N_FREE + j];
+            for (int k = 0; k < j; ++k) s -= L[i*N_FREE + k]*L[j*N_FREE + k];
+            if (i == j) {
+                if (!(s > 1e-12f)) return false;
+                L[i*N_FREE + j] = sqrtf(s);
+            } else L[i*N_FREE + j] = s / L[j*N_FREE + j];
+        }
+    float y[N_FREE];
+    for (int i = 0; i < N_FREE; ++i) {
+        float s = rhs[i];
+        for (int k = 0; k < i; ++k) s -= L[i*N_FREE + k]*y[k];
+        y[i] = s / L[i*N_FREE + i];
+    }
+    for (int i = N_FREE - 1; i >= 0; --i) {
+        float s = y[i];
+        for (int k = i + 1; k < N_FREE; ++k) s -= L[k*N_FREE + i]*dx[k];
+        dx[i] = s / L[i*N_FREE + i];
+    }
+    return true;
+}
 
-    hlld_x_kernel(grid, block, (rho, mx, my, mz, E_total, Bx, By, Bz,
-                                rho_new, mx_new, my_new, mz_new, E_new, Ni, dt/dx, gamma))
+extern "C" __global__
+__launch_bounds__(64, 2)
+void gyrotropic_12_kernel(
+    const float* __restrict__ M_target,
+    const float* __restrict__ n_in,
+    float* __restrict__ lambda_io,
+    float* __restrict__ n_out,
+    float* __restrict__ upar_out,
+    float* __restrict__ Ppar_out,
+    float* __restrict__ Pperp_out,
+    float* __restrict__ qpar_out,
+    float* __restrict__ qperp_out,
+    int* __restrict__ status,
+    int Ncells,
+    float mass,
+    float thermal_scale,
+    float alpha_par,
+    float alpha_perp)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= Ncells) return;
 
-    # Conservative RK averaging
-    rho *= 0.5; rho += 0.5 * rho_new
-    mx *= 0.5; mx += 0.5 * mx_new
-    my *= 0.5; my += 0.5 * my_new
-    mz *= 0.5; mz += 0.5 * mz_new
-    E_total *= 0.5; E_total += 0.5 * E_new
+    const float* Mt = M_target + idx * N_FEAT;
+    float* lo = lambda_io + idx * N_FEAT;
 
-    # Floors
-    rho = cp.maximum(rho, 1e-6)
-    E_total = cp.maximum(E_total, 1e-5)
+    int flag = 0;
+    if (Mt[2] < 1e-8f || Mt[3] < 1e-8f) flag = 5;
 
-    # Self-gravity
-    if steps % 8 == 0:
-        add_self_gravity(dt)
+    float eta = -0.6f, zeta = -0.6f, xi = 0.f, low[6] = {0};
+    float ap = fmaxf(alpha_par, 0.3f), ae = fmaxf(alpha_perp, 0.3f);
+    float lambda_lm = 1e-3f;
 
-    steps += 1
-    if steps % print_interval == 0:
-        vmax = float(cp.max(cp.sqrt((mx/rho)**2 + (my/rho)**2 + (mz/rho)**2)))
-        print(f"Step {steps:4d} | Max|v| = {vmax:.4f}")
+    float lambda[N_FEAT], M[N_FEAT];
+    float G[N_FEAT * N_FEAT];
+    float J[N_FEAT * N_FREE];
+    float H[N_FREE * N_FREE];
+    float rhs[N_FREE], dx[N_FREE];
 
-    if steps % plot_interval == 0:
-        plot_rotation_curve(steps)
+    if (flag == 0) {
+        for (int it = 0; it < MAX_NEWTON; ++it) {
+            set_from_free(eta, zeta, xi, low, lambda);
+            if (!moments(lambda, ap, ae, M, G)) { flag = 6; break; }
 
-print("\n🎉 Plasma Cosmology v0.1 COMPLETE - Ready to run!")
+            float obj = moment_objective(M, Mt);
+            float max_r = 0.f;
+            for (int k = 1; k < N_FEAT; ++k) max_r = fmaxf(max_r, fabsf(M[k]-Mt[k]));
+            if (max_r < RES_TOL) { flag = 0; break; }
+
+            jacobian(eta, zeta, xi, J);
+
+            for (int p = 0; p < N_FREE*N_FREE; ++p) H[p] = 0.f;
+            for (int p = 0; p < N_FREE; ++p) rhs[p] = 0.f;
+
+            for (int i = 1; i < N_FEAT; ++i) {
+                float ri = M[i] - Mt[i];
+                float Di[N_FREE];
+                for (int p = 0; p < N_FREE; ++p) {
+                    float s = 0.f;
+                    for (int j = 0; j < N_FEAT; ++j) s += G[i*N_FEAT + j] * J[j*N_FREE + p];
+                    Di[p] = s;
+                    rhs[p] += s * ri;
+                }
+                for (int p = 0; p < N_FREE; ++p)
+                    for (int q = 0; q < N_FREE; ++q)
+                        H[p*N_FREE + q] += Di[p] * Di[q];
+            }
+
+            float max_diag = 1e-8f;
+            for (int p = 0; p < N_FREE; ++p) max_diag = fmaxf(max_diag, H[p*N_FREE + p]);
+            float ridge = lambda_lm * max_diag;
+            for (int p = 0; p < N_FREE; ++p) H[p*N_FREE + p] += ridge;
+
+            if (!chol9(H, rhs, dx)) {
+                lambda_lm *= 4.f;
+                continue;
+            }
+
+            float al = 0.8f;
+            bool accepted = false;
+            for (int ls = 0; ls < 4; ++ls) {
+                float e2 = eta - al * dx[0];
+                float z2 = zeta - al * dx[1];
+                float x2 = xi - al * dx[2];
+                if (e2 < -6.f || e2 > 3.f || z2 < -6.f || z2 > 3.f) { al *= 0.5f; continue; }
+                float l2[6];
+                for (int k = 0; k < 6; ++k) l2[k] = low[k] - al * dx[3 + k];
+                float lam2[N_FEAT], M2[N_FEAT], G2[N_FEAT*N_FEAT];
+                set_from_free(e2, z2, x2, l2, lam2);
+                if (!moments(lam2, ap, ae, M2, G2)) { al *= 0.5f; continue; }
+                float obj2 = moment_objective(M2, Mt);
+                if (obj2 < obj * 1.01f) {
+                    eta = e2; zeta = z2; xi = x2;
+                    for (int k = 0; k < 6; ++k) low[k] = l2[k];
+                    accepted = true;
+                    lambda_lm = fmaxf(lambda_lm * 0.7f, 1e-6f);
+                    break;
+                }
+                al *= 0.5f;
+            }
+            if (!accepted) lambda_lm = fminf(lambda_lm * 3.f, 10.f);
+            if (it == MAX_NEWTON - 1) flag = 1;
+        }
+    }
+
+    float m3_par = 0.f, m3_mix = 0.f;
+    set_from_free(eta, zeta, xi, low, lambda);
+    bool ok_final = moments_final(lambda, ap, ae, M, &m3_par, &m3_mix);
+    if (!ok_final) flag = 6;
+
+    if (ok_final && flag != 5) {
+        float moment_r = 0.f;
+        for (int k = 1; k < N_FEAT; ++k)
+            moment_r = fmaxf(moment_r, fabsf(M[k] - Mt[k]));
+        if (moment_r < RES_TOL) flag = 0;
+    }
+
+    for (int k = 0; k < N_FEAT; ++k) lo[k] = lambda[k];
+    status[idx] = flag;
+
+    float n = n_in[idx];
+    float up = ok_final ? M[1] : 0.f;
+    float cp2 = ok_final ? fmaxf(M[3] - up*up, 1e-6f) : 1e-4f;
+    float ce2 = ok_final ? fmaxf(M[2], 1e-6f) : 1e-4f;
+
+    float qpar = 0.f, qperp = 0.f;
+    if (ok_final) {
+        qpar  = mass * n * (m3_par - 3.f * up * cp2 - up*up*up);
+        qperp = 0.5f * mass * n * (m3_mix - up * M[2]);
+    }
+
+    n_out[idx] = n;
+    upar_out[idx] = up;
+    Ppar_out[idx] = mass * n * cp2;
+    Pperp_out[idx] = 0.5f * mass * n * ce2;
+    qpar_out[idx] = qpar;
+    qperp_out[idx] = qperp;
+}
+''', 'gyrotropic_12_kernel')
+
+# ===== TEST =====
+Ncells = 128
+M_target = cp.ones((Ncells, 12), dtype=cp.float32)
+M_target[:, 0] = 1.0
+M_target[:, 2] = 1.0
+M_target[:, 3] = 1.0
+n_in = cp.ones(Ncells, dtype=cp.float32)
+lambda_io = cp.zeros((Ncells, 12), dtype=cp.float32)
+
+n_out   = cp.empty(Ncells, dtype=cp.float32)
+upar    = cp.empty(Ncells, dtype=cp.float32)
+Ppar    = cp.empty(Ncells, dtype=cp.float32)
+Pperp   = cp.empty(Ncells, dtype=cp.float32)
+qpar    = cp.empty(Ncells, dtype=cp.float32)
+qperp   = cp.empty(Ncells, dtype=cp.float32)
+status  = cp.zeros(Ncells, dtype=cp.int32)
+
+threads = 64
+blocks  = (Ncells + threads - 1) // threads
+
+gyrotropic_12_kernel(
+    (blocks,), (threads,),
+    (M_target, n_in, lambda_io,
+     n_out, upar, Ppar, Pperp, qpar, qperp,
+     status, Ncells, 1.0, 1.0, 0.5, 0.5)
+)
+
+print("status unique:", cp.unique(status).get())
+print("Ppar  sample:", Ppar[:4].get())
+print("Pperp sample:", Pperp[:4].get())
+print("max |qpar|, |qperp|:", float(cp.max(cp.abs(qpar))), float(cp.max(cp.abs(qperp))))
