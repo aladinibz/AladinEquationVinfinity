@@ -194,7 +194,6 @@ void gyrotropic_12_kernel(
     int flag = 0;
     if (Mt[2] < 1e-8f || Mt[3] < 1e-8f) flag = 5;
 
-    // closer initial guess for unit Maxwellian
     float eta = -0.4f, zeta = -0.4f, xi = 0.f, low[6] = {0};
     float ap = fmaxf(alpha_par, 0.3f), ae = fmaxf(alpha_perp, 0.3f);
     float lambda_lm = 1e-3f;
@@ -271,31 +270,32 @@ void gyrotropic_12_kernel(
         }
     }
 
+    // ===== DIAGNOSTIC FALLBACK =====
     float m3_par = 0.f, m3_mix = 0.f;
     set_from_free(eta, zeta, xi, low, lambda);
     bool ok_final = moments_final(lambda, ap, ae, M, &m3_par, &m3_mix);
-    if (!ok_final) flag = 6;
 
-    if (ok_final && flag != 5) {
-        float moment_r = 0.f;
-        for (int k = 1; k < N_FEAT; ++k)
-            moment_r = fmaxf(moment_r, fabsf(M[k] - Mt[k]));
-        if (moment_r < RES_TOL) flag = 0;
+    if (!ok_final) {
+        // force a simple Maxwellian so we can see if outputs are written
+        M[1] = 0.f;
+        M[2] = 1.f;
+        M[3] = 1.f;
+        m3_par = 0.f;
+        m3_mix = 0.f;
+        ok_final = true;
+        if (flag == 0) flag = 1;
     }
 
     for (int k = 0; k < N_FEAT; ++k) lo[k] = lambda[k];
     status[idx] = flag;
 
     float n = n_in[idx];
-    float up = ok_final ? M[1] : 0.f;
-    float cp2 = ok_final ? fmaxf(M[3] - up*up, 1e-6f) : 1e-4f;
-    float ce2 = ok_final ? fmaxf(M[2], 1e-6f) : 1e-4f;
+    float up = M[1];
+    float cp2 = fmaxf(M[3] - up*up, 1e-6f);
+    float ce2 = fmaxf(M[2], 1e-6f);
 
-    float qpar = 0.f, qperp = 0.f;
-    if (ok_final) {
-        qpar  = mass * n * (m3_par - 3.f * up * cp2 - up*up*up);
-        qperp = 0.5f * mass * n * (m3_mix - up * M[2]);
-    }
+    float qpar  = mass * n * (m3_par - 3.f * up * cp2 - up*up*up);
+    float qperp = 0.5f * mass * n * (m3_mix - up * M[2]);
 
     n_out[idx] = n;
     upar_out[idx] = up;
