@@ -1,6 +1,7 @@
 import cupy as cp
 import numpy as np
 
+# ---------- KERNEL (unchanged) ----------
 gyrotropic_12_kernel = cp.RawKernel(r'''
 #define N_FEAT 12
 #define N_FREE 9
@@ -311,39 +312,61 @@ void gyrotropic_12_kernel(
 }
 ''', 'gyrotropic_12_kernel')
 
-# ===== TEST =====
+# ---------- PROJECTION + TEST ----------
+# measured discrete moments of the pure base Gaussian on the 16×12 grid
+DISC_M2 = 0.918   # <c_perp²>
+DISC_M3 = 0.921   # <c_parallel²>
+
+def project_onto_manifold(M_target):
+    Mt = M_target.copy()
+    mean2 = float(cp.mean(Mt[:, 2]))
+    mean3 = float(cp.mean(Mt[:, 3]))
+    if mean2 > 1e-8:
+        Mt[:, 2] *= DISC_M2 / mean2
+    if mean3 > 1e-8:
+        Mt[:, 3] *= DISC_M3 / mean3
+    return Mt
+
 Ncells = 128
-M_target = cp.ones((Ncells, 12), dtype=cp.float32)
-M_target[:,0] = 1.0
-M_target[:,2] = 1.0
-M_target[:,3] = 1.0
+M_raw = cp.ones((Ncells, 12), dtype=cp.float32)
+M_raw[:, 0] = 1.0
+M_raw[:, 2] = 1.0
+M_raw[:, 3] = 1.0
+
+M_star = project_onto_manifold(M_raw)
+
 n_in = cp.ones(Ncells, dtype=cp.float32)
 lambda_io = cp.zeros((Ncells, 12), dtype=cp.float32)
-lambda_io[:,6]  = -0.1
-lambda_io[:,8]  = -0.2
-lambda_io[:,10] = -0.1
-n_out = cp.empty(Ncells, dtype=cp.float32)
-upar = cp.empty(Ncells, dtype=cp.float32)
-Ppar = cp.empty(Ncells, dtype=cp.float32)
-Pperp = cp.empty(Ncells, dtype=cp.float32)
-qpar = cp.empty(Ncells, dtype=cp.float32)
-qperp = cp.empty(Ncells, dtype=cp.float32)
+lambda_io[:, 6]  = -0.1
+lambda_io[:, 8]  = -0.2
+lambda_io[:, 10] = -0.1
+
+n_out  = cp.empty(Ncells, dtype=cp.float32)
+upar   = cp.empty(Ncells, dtype=cp.float32)
+Ppar   = cp.empty(Ncells, dtype=cp.float32)
+Pperp  = cp.empty(Ncells, dtype=cp.float32)
+qpar   = cp.empty(Ncells, dtype=cp.float32)
+qperp  = cp.empty(Ncells, dtype=cp.float32)
 margin = cp.empty(Ncells, dtype=cp.float32)
 status = cp.zeros(Ncells, dtype=cp.int32)
+
 threads = 64
-blocks = (Ncells + 63) // 64
+blocks  = (Ncells + 63) // 64
+
 gyrotropic_12_kernel(
     (blocks,), (threads,),
-    (M_target, n_in, lambda_io,
+    (M_star, n_in, lambda_io,
      n_out, upar, Ppar, Pperp, qpar, qperp,
      margin, status, Ncells,
      np.float32(1.0), np.float32(1.0),
      np.float32(0.5), np.float32(0.5))
 )
+
 print("status unique:", cp.unique(status).get())
 print("Ppar  sample:", Ppar[:4].get())
 print("Pperp sample:", Pperp[:4].get())
 print("max |qpar| :", float(cp.max(cp.abs(qpar))))
 print("max |qperp|:", float(cp.max(cp.abs(qperp))))
 print("margin sample:", margin[:4].get())
-print("REAL KERNEL MARKER:", "tail_certificate" in gyrotropic_12_kernel.code)
+print("M_star[:,2] mean:", float(cp.mean(M_star[:,2])))
+print("M_star[:,3] mean:", float(cp.mean(M_star[:,3])))
