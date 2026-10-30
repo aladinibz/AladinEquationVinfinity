@@ -13,53 +13,38 @@ try:
 except Exception:
     raise RuntimeError("Enable T4/A100 GPU: Runtime → Change runtime type → GPU")
 
-# ---------- ct_emf ----------
+# ---------- ct_emf (global memory only) ----------
 ct_emf_kernel = cp.RawKernel(r'''
-#define TX 16
-#define TY 4
-#define TZ 4
-#define PAD 1
-__device__ float hodge(float a, float b){return 0.5f*(a+b);}
-extern "C" __launch_bounds__(256,2)
-__global__ void utc_emf_kernel(
+extern "C" __global__
+void utc_emf_kernel(
     const float* rho, const float* mx, const float* my, const float* mz,
     const float* Bx, const float* By, const float* Bz,
     float* Emfx, float* Emfy, float* Emfz, int Ni)
 {
-    int tx=threadIdx.x, ty=threadIdx.y, tz=threadIdx.z;
-    int i=blockIdx.x*TX+tx, j=blockIdx.y*TY+ty, k=blockIdx.z*TZ+tz;
-    if(i<1||j<1||k<1||i>=Ni-1||j>=Ni-1||k>=Ni-1) return;
-    int sx=tx+PAD, sy=ty+PAD, sz=tz+PAD;
-    __shared__ float sBx[TX+2*PAD][TY+2*PAD][TZ+2*PAD];
-    __shared__ float sBy[TX+2*PAD][TY+2*PAD][TZ+2*PAD];
-    __shared__ float sBz[TX+2*PAD][TY+2*PAD][TZ+2*PAD];
-    int tid=tx+ty*TX+tz*TX*TY;
-    int tot=blockDim.x*blockDim.y*blockDim.z;
-    for(int o=tid;o<(TX+2*PAD)*(TY+2*PAD)*(TZ+2*PAD);o+=tot){
-        int lx=o%(TX+2*PAD);
-        int ly=(o/(TX+2*PAD))%(TY+2*PAD);
-        int lz=o/((TX+2*PAD)*(TY+2*PAD));
-        int li=blockIdx.x*TX+(lx-PAD);
-        int lj=blockIdx.y*TY+(ly-PAD);
-        int lk=blockIdx.z*TZ+(lz-PAD);
-        if(li>=0&&li<Ni&&lj>=0&&lj<Ni&&lk>=0&&lk<Ni){
-            int g=li*Ni*Ni+lj*Ni+lk;
-            sBx[lx][ly][lz]=Bx[g];
-            sBy[lx][ly][lz]=By[g];
-            sBz[lx][ly][lz]=Bz[g];
-        } else {
-            sBx[lx][ly][lz]=sBy[lx][ly][lz]=sBz[lx][ly][lz]=0.f;
-        }
-    }
-    __syncthreads();
-    int g=i*Ni*Ni+j*Ni+k;
-    float r=fmaxf(rho[g],1e-8f);
-    float vx=mx[g]/r, vy=my[g]/r, vz=mz[g]/r;
-    Emfx[g]=-(vy*hodge(sBz[sx][sy][sz],sBz[sx][sy][sz+1])-vz*hodge(sBy[sx][sy][sz],sBy[sx][sy+1][sz]));
-    Emfy[g]=-(vz*hodge(sBx[sx][sy][sz],sBx[sx+1][sy][sz])-vx*hodge(sBz[sx][sy][sz],sBz[sx][sy][sz+1]));
-    Emfz[g]=-(vx*hodge(sBy[sx][sy][sz],sBy[sx][sy][sz+1])-vy*hodge(sBx[sx][sy][sz],sBx[sx][sy+1][sz]));
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    int j = blockIdx.y * blockDim.y + threadIdx.y;
+    int k = blockIdx.z * blockDim.z + threadIdx.z;
+    if (i < 1 || j < 1 || k < 1 || i >= Ni-1 || j >= Ni-1 || k >= Ni-1) return;
+
+    int g = i * Ni * Ni + j * Ni + k;
+    float r = fmaxf(rho[g], 1e-8f);
+    float vx = mx[g] / r;
+    float vy = my[g] / r;
+    float vz = mz[g] / r;
+
+    // simple face averages, guarded
+    float Bz_yp = (k+1 < Ni) ? Bz[g + 1] : Bz[g];
+    float By_zp = (j+1 < Ni) ? By[g + Ni] : By[g];
+    float Bx_xp = (i+1 < Ni) ? Bx[g + Ni*Ni] : Bx[g];
+    float Bz_xp = (i+1 < Ni) ? Bz[g + Ni*Ni] : Bz[g];
+    float By_yp = (k+1 < Ni) ? By[g + 1] : By[g];
+    float Bx_yp = (j+1 < Ni) ? Bx[g + Ni] : Bx[g];
+
+    Emfx[g] = -(vy * 0.5f * (Bz[g] + Bz_yp) - vz * 0.5f * (By[g] + By_zp));
+    Emfy[g] = -(vz * 0.5f * (Bx[g] + Bx_xp) - vx * 0.5f * (Bz[g] + Bz_xp));
+    Emfz[g] = -(vx * 0.5f * (By[g] + By_yp) - vy * 0.5f * (Bx[g] + Bx_yp));
 }
-''','utc_emf_kernel')
+''', 'utc_emf_kernel')
 
 # ---------- ct_curl (three-component) ----------
 ct_curl_kernel = cp.RawKernel(r'''
@@ -129,13 +114,13 @@ void gyrotropic_12_kernel(const float* Mt,const float* n_in,float* lam,
 Ni=64
 Ncells=Ni*Ni*Ni
 dx=np.float32(1.0)
-dt=np.float32(0.005)
+dt=np.float32(0.001)          # smaller timestep
 inv2dx=np.float32(0.5/dx)
 mass=np.float32(1.0)
 thermal_scale=np.float32(1.0)
 alpha_par=np.float32(0.5)
 alpha_perp=np.float32(0.5)
-n_steps=10
+n_steps=20
 
 rho=cp.ones((Ni,Ni,Ni),dtype=cp.float32)
 mx=cp.zeros_like(rho)
@@ -186,9 +171,16 @@ for step in range(n_steps):
         (Emfx,Emfy,Emfz,Bx,By,Bz,np.int32(Ni),dt,inv2dx))
     glm_kernel(blocks,threads,
         (Bx,By,Bz,psi,np.int32(Ni),dt,dx,np.float32(1.0),np.float32(0.5)))
-    if step % 5 == 0:
+
+    Bmag = cp.sqrt(Bx**2 + By**2 + Bz**2)
+    if step % 5 == 0 or not cp.all(cp.isfinite(Bmag)):
         print(f"step {step:3d}  status={cp.unique(status)}  "
-              f"mean|B|={float(cp.mean(cp.sqrt(Bx**2+By**2+Bz**2))):.4f}")
+              f"mean|B|={float(cp.mean(Bmag)):.6f}  "
+              f"max|B|={float(cp.max(Bmag)):.6f}  "
+              f"finite={bool(cp.all(cp.isfinite(Bmag)))}")
+        if not cp.all(cp.isfinite(Bmag)):
+            print("NaN detected — stopping")
+            break
 
 print("Done.")
 print("Final mean Ppar / Pperp =", float(cp.mean(Ppar)), float(cp.mean(Pperp)))
