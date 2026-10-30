@@ -119,12 +119,13 @@ void gyrotropic_12_kernel(
 }
 ''', 'gyrotropic_12_kernel')
 
-# ---------- ct_emf (global memory) ----------
+# ---------- ct_emf with anisotropic pressure ----------
 ct_emf_kernel = cp.RawKernel(r'''
 extern "C" __global__
 void utc_emf_kernel(
     const float* rho, const float* mx, const float* my, const float* mz,
     const float* Bx, const float* By, const float* Bz,
+    const float* Ppar, const float* Pperp,
     float* Emfx, float* Emfy, float* Emfz, int Ni)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -145,9 +146,29 @@ void utc_emf_kernel(
     float By_yp = (k+1 < Ni) ? By[g + 1] : By[g];
     float Bx_yp = (j+1 < Ni) ? Bx[g + Ni] : Bx[g];
 
-    Emfx[g] = -(vy * 0.5f * (Bz[g] + Bz_yp) - vz * 0.5f * (By[g] + By_zp));
-    Emfy[g] = -(vz * 0.5f * (Bx[g] + Bx_xp) - vx * 0.5f * (Bz[g] + Bz_xp));
-    Emfz[g] = -(vx * 0.5f * (By[g] + By_yp) - vy * 0.5f * (Bx[g] + Bx_yp));
+    float Ex = -(vy * 0.5f * (Bz[g] + Bz_yp) - vz * 0.5f * (By[g] + By_zp));
+    float Ey = -(vz * 0.5f * (Bx[g] + Bx_xp) - vx * 0.5f * (Bz[g] + Bz_xp));
+    float Ez = -(vx * 0.5f * (By[g] + By_yp) - vy * 0.5f * (Bx[g] + Bx_yp));
+
+    float dPpar_dx  = (Ppar[g + Ni*Ni] - Ppar[g - Ni*Ni]) * 0.5f;
+    float dPpar_dy  = (Ppar[g + Ni]    - Ppar[g - Ni])    * 0.5f;
+    float dPpar_dz  = (Ppar[g + 1]     - Ppar[g - 1])     * 0.5f;
+    float dPperp_dx = (Pperp[g + Ni*Ni] - Pperp[g - Ni*Ni]) * 0.5f;
+    float dPperp_dy = (Pperp[g + Ni]    - Pperp[g - Ni])    * 0.5f;
+    float dPperp_dz = (Pperp[g + 1]     - Pperp[g - 1])     * 0.5f;
+
+    float Bmag = sqrtf(Bx[g]*Bx[g] + By[g]*By[g] + Bz[g]*Bz[g]) + 1e-8f;
+    float bx = Bx[g] / Bmag, by = By[g] / Bmag, bz = Bz[g] / Bmag;
+    float dP = (Ppar[g] - Pperp[g]);
+
+    float scale = 0.01f / r;
+    Ex += scale * (dP * bx * (bx*dPpar_dx + by*dPpar_dy + bz*dPpar_dz) - dPperp_dx);
+    Ey += scale * (dP * by * (bx*dPpar_dx + by*dPpar_dy + bz*dPpar_dz) - dPperp_dy);
+    Ez += scale * (dP * bz * (bx*dPpar_dx + by*dPpar_dy + bz*dPpar_dz) - dPperp_dz);
+
+    Emfx[g] = Ex;
+    Emfy[g] = Ey;
+    Emfz[g] = Ez;
 }
 ''', 'utc_emf_kernel')
 
@@ -260,7 +281,7 @@ for step in range(n_steps):
         (M_target,n_in,lambda_io,n_out,upar,Ppar,Pperp,qpar,qperp,
          status,np.int32(Ncells),mass,thermal_scale,alpha_par,alpha_perp))
     ct_emf_kernel(blocks,threads,
-        (rho,mx,my,mz,Bx,By,Bz,Emfx,Emfy,Emfz,np.int32(Ni)))
+        (rho,mx,my,mz,Bx,By,Bz,Ppar,Pperp,Emfx,Emfy,Emfz,np.int32(Ni)))
     ct_curl_kernel(blocks,threads,
         (Emfx,Emfy,Emfz,Bx,By,Bz,np.int32(Ni),dt,inv2dx))
     glm_kernel(blocks,threads,
@@ -270,7 +291,8 @@ for step in range(n_steps):
     if step % 5 == 0 or not cp.all(cp.isfinite(Bmag)):
         print(f"step {step:3d}  status unique={cp.unique(status)}  "
               f"mean|B|={float(cp.mean(Bmag)):.6f}  "
-              f"mean Ppar={float(cp.mean(Ppar)):.6f}")
+              f"mean Ppar={float(cp.mean(Ppar)):.6f}  "
+              f"mean Pperp={float(cp.mean(Pperp)):.6f}")
         if not cp.all(cp.isfinite(Bmag)):
             print("NaN detected — stopping")
             break
