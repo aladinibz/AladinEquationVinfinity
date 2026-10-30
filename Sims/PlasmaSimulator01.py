@@ -94,7 +94,7 @@ void gyrotropic_12_kernel(
     float* lo = lambda_io + idx * N_FEAT;
 
     float eta = 0.f, zeta = 0.f, xi = 0.f;
-    float low[6] = {0.f, 0.f, 0.f, 0.f, 0.f};
+    float low[6] = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
     float lam[N_FEAT];
     float M[N_FEAT];
     float m3_par = 0.f, m3_mix = 0.f;
@@ -184,7 +184,7 @@ void utc_emf_kernel(
     float bx = Bx[g] / Bmag, by = By[g] / Bmag, bz = Bz[g] / Bmag;
     float dP = (Ppar[g] - Pperp[g]);
 
-    float scale = 1.0f / r;          // raised from 0.5f
+    float scale = 1.0f / r;
     Ex += scale * (dP * bx * (bx*dPpar_dx + by*dPpar_dy + bz*dPpar_dz) - dPperp_dx);
     Ey += scale * (dP * by * (bx*dPpar_dx + by*dPpar_dy + bz*dPpar_dz) - dPperp_dy);
     Ez += scale * (dP * bz * (bx*dPpar_dx + by*dPpar_dy + bz*dPpar_dz) - dPperp_dz);
@@ -223,101 +223,118 @@ void ct_curl_kernel(
 }
 ''', 'ct_curl_kernel')
 
-# ---------- glm ----------
+# ---------- glm (race-free: separate psi_new buffer) ----------
 glm_kernel = cp.RawKernel(r'''
 extern "C" __global__
-void glm_kernel(float* Bx,float* By,float* Bz,float* psi,
-                int Ni,float dt,float dx,float ch,float damping){
-    int i=blockIdx.x*blockDim.x+threadIdx.x;
-    int j=blockIdx.y*blockDim.y+threadIdx.y;
-    int k=blockIdx.z*blockDim.z+threadIdx.z;
-    if(i<1||j<1||k<1||i>=Ni-1||j>=Ni-1||k>=Ni-1) return;
-    int idx=i*Ni*Ni+j*Ni+k;
-    float inv2dx=0.5f/dx;
-    float divB=((Bx[idx+Ni*Ni]-Bx[idx-Ni*Ni])+(By[idx+Ni]-By[idx-Ni])+(Bz[idx+1]-Bz[idx-1]))*inv2dx;
-    psi[idx]-=dt*(ch*ch*divB+damping*psi[idx]);
-    Bx[idx]-=dt*(psi[idx+Ni*Ni]-psi[idx-Ni*Ni])*inv2dx;
-    By[idx]-=dt*(psi[idx+Ni]-psi[idx-Ni])*inv2dx;
-    Bz[idx]-=dt*(psi[idx+1]-psi[idx-1])*inv2dx;
+void glm_kernel(const float* Bx, const float* By, const float* Bz,
+                const float* psi_old, float* psi_new,
+                float* Bx_out, float* By_out, float* Bz_out,
+                int Ni, float dt, float dx, float ch, float damping) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    int j = blockIdx.y * blockDim.y + threadIdx.y;
+    int k = blockIdx.z * blockDim.z + threadIdx.z;
+    if (i < 1 || j < 1 || k < 1 || i >= Ni-1 || j >= Ni-1 || k >= Ni-1) return;
+    int idx = i * Ni * Ni + j * Ni + k;
+    float inv2dx = 0.5f / dx;
+    float divB = ((Bx[idx+Ni*Ni] - Bx[idx-Ni*Ni]) +
+                  (By[idx+Ni]    - By[idx-Ni]) +
+                  (Bz[idx+1]     - Bz[idx-1])) * inv2dx;
+    float psi_upd = psi_old[idx] - dt * (ch*ch*divB + damping * psi_old[idx]);
+    psi_new[idx] = psi_upd;
+    Bx_out[idx] = Bx[idx] - dt * (psi_old[idx+Ni*Ni] - psi_old[idx-Ni*Ni]) * inv2dx;
+    By_out[idx] = By[idx] - dt * (psi_old[idx+Ni]    - psi_old[idx-Ni])    * inv2dx;
+    Bz_out[idx] = Bz[idx] - dt * (psi_old[idx+1]     - psi_old[idx-1])     * inv2dx;
 }
-''','glm_kernel')
+''', 'glm_kernel')
 
 # ---------- Driver ----------
-Ni=64
-Ncells=Ni*Ni*Ni
-dx=np.float32(1.0)
-dt=np.float32(0.001)
-inv2dx=np.float32(0.5/dx)
-mass=np.float32(1.0)
-thermal_scale=np.float32(1.0)
-alpha_par=np.float32(0.5)
-alpha_perp=np.float32(0.5)
-n_steps=20
+Ni = 64
+Ncells = Ni * Ni * Ni
+dx = np.float32(1.0)
+dt = np.float32(0.001)
+inv2dx = np.float32(0.5 / dx)
+mass = np.float32(1.0)
+thermal_scale = np.float32(1.0)
+alpha_par = np.float32(0.5)
+alpha_perp = np.float32(0.5)
+n_steps = 20
 
-rho=cp.ones((Ni,Ni,Ni),dtype=cp.float32)
-mx=cp.zeros_like(rho)
-my=cp.zeros_like(rho)
-mz=cp.zeros_like(rho)
-Bx=cp.zeros_like(rho)
-By=cp.zeros_like(rho)
-Bz=cp.ones_like(rho)*0.05
-psi=cp.zeros_like(rho)
-Emfx=cp.zeros_like(rho)
-Emfy=cp.zeros_like(rho)
-Emfz=cp.zeros_like(rho)
+rho = cp.ones((Ni, Ni, Ni), dtype=cp.float32)
+mx = cp.zeros_like(rho)
+my = cp.zeros_like(rho)
+mz = cp.zeros_like(rho)
+Bx = cp.zeros_like(rho)
+By = cp.zeros_like(rho)
+Bz = cp.ones_like(rho) * 0.05
+psi = cp.zeros_like(rho)
+psi_new = cp.zeros_like(rho)
+Bx_new = cp.zeros_like(rho)
+By_new = cp.zeros_like(rho)
+Bz_new = cp.zeros_like(rho)
+Emfx = cp.zeros_like(rho)
+Emfy = cp.zeros_like(rho)
+Emfz = cp.zeros_like(rho)
 
-M_target=cp.zeros((Ncells,12),dtype=cp.float32)
-lambda_io=cp.zeros((Ncells,12),dtype=cp.float32)
-n_in=cp.ones(Ncells,dtype=cp.float32)
-n_out=cp.zeros(Ncells,dtype=cp.float32)
-upar=cp.zeros(Ncells,dtype=cp.float32)
-Ppar=cp.zeros(Ncells,dtype=cp.float32)
-Pperp=cp.zeros(Ncells,dtype=cp.float32)
-qpar=cp.zeros(Ncells,dtype=cp.float32)
-qperp=cp.zeros(Ncells,dtype=cp.float32)
-status=cp.zeros(Ncells,dtype=cp.int32)
+M_target = cp.zeros((Ncells, 12), dtype=cp.float32)
+lambda_io = cp.zeros((Ncells, 12), dtype=cp.float32)
+n_in = cp.ones(Ncells, dtype=cp.float32)
+n_out = cp.zeros(Ncells, dtype=cp.float32)
+upar = cp.zeros(Ncells, dtype=cp.float32)
+Ppar = cp.zeros(Ncells, dtype=cp.float32)
+Pperp = cp.zeros(Ncells, dtype=cp.float32)
+qpar = cp.zeros(Ncells, dtype=cp.float32)
+qperp = cp.zeros(Ncells, dtype=cp.float32)
+status = cp.zeros(Ncells, dtype=cp.int32)
 
 def init_disk():
-    i=cp.arange(Ni,dtype=cp.float32)
-    X,Y,Z=cp.meshgrid(i,i,i,indexing='ij')
-    R=cp.sqrt((X-Ni/2)**2+(Y-Ni/2)**2)+1e-3
-    rho[:]=cp.clip(cp.exp(-R/12)*cp.exp(-cp.abs(Z-Ni/2)/4),0.05,None)
-    vphi=cp.sqrt(1.0/(R+2.0))
-    mx[:]=-vphi*(Y-Ni/2)/R*rho
-    my[:]= vphi*(X-Ni/2)/R*rho
+    i = cp.arange(Ni, dtype=cp.float32)
+    X, Y, Z = cp.meshgrid(i, i, i, indexing='ij')
+    R = cp.sqrt((X - Ni/2)**2 + (Y - Ni/2)**2) + 1e-3
+    rho[:] = cp.clip(cp.exp(-R/12) * cp.exp(-cp.abs(Z - Ni/2)/4), 0.05, None)
+    vphi = cp.sqrt(1.0 / (R + 2.0))
+    mx[:] = -vphi * (Y - Ni/2) / R * rho
+    my[:] =  vphi * (X - Ni/2) / R * rho
 init_disk()
 
-threads=(16,4,4)
-blocks=((Ni+15)//16,(Ni+3)//4,(Ni+3)//4)
-threads_g=128
-blocks_g=(Ncells+127)//128
+threads = (16, 4, 4)
+blocks = ((Ni + 15) // 16, (Ni + 3) // 4, (Ni + 3) // 4)
+threads_g = 128
+blocks_g = (Ncells + 127) // 128
 
 def build_M_target():
     r = rho.ravel() + 1e-8
-    M_target[:,0] = 1.0
-    M_target[:,2] = cp.clip(2.0 * Pperp / r, 1e-6, 8.0)
-    M_target[:,3] = cp.clip(Ppar / r,        1e-6, 8.0)
+    M_target[:, 0] = 1.0
+    M_target[:, 2] = cp.clip(2.0 * Pperp / r, 1e-6, 8.0)
+    M_target[:, 3] = cp.clip(Ppar / r,        1e-6, 8.0)
 
-print("Plasma simulator starting ...")
+print("Plasma simulator starting (race-free GLM) ...")
 for step in range(n_steps):
     build_M_target()
-    gyrotropic_12_kernel((blocks_g,),(threads_g,),
-        (M_target,n_in,lambda_io,n_out,upar,Ppar,Pperp,qpar,qperp,
-         status,np.int32(Ncells),mass,thermal_scale,alpha_par,alpha_perp))
-    ct_emf_kernel(blocks,threads,
-        (rho,mx,my,mz,Bx,By,Bz,Ppar,Pperp,Emfx,Emfy,Emfz,np.int32(Ni)))
-    ct_curl_kernel(blocks,threads,
-        (Emfx,Emfy,Emfz,Bx,By,Bz,np.int32(Ni),dt,inv2dx))
-    glm_kernel(blocks,threads,
-        (Bx,By,Bz,psi,np.int32(Ni),dt,dx,np.float32(1.0),np.float32(0.5)))
+    gyrotropic_12_kernel((blocks_g,), (threads_g,),
+        (M_target, n_in, lambda_io, n_out, upar, Ppar, Pperp, qpar, qperp,
+         status, np.int32(Ncells), mass, thermal_scale, alpha_par, alpha_perp))
+    ct_emf_kernel(blocks, threads,
+        (rho, mx, my, mz, Bx, By, Bz, Ppar, Pperp, Emfx, Emfy, Emfz, np.int32(Ni)))
+    ct_curl_kernel(blocks, threads,
+        (Emfx, Emfy, Emfz, Bx, By, Bz, np.int32(Ni), dt, inv2dx))
+    glm_kernel(blocks, threads,
+        (Bx, By, Bz, psi, psi_new, Bx_new, By_new, Bz_new,
+         np.int32(Ni), dt, dx, np.float32(1.0), np.float32(0.5)))
+    # swap buffers
+    psi, psi_new = psi_new, psi
+    Bx, Bx_new = Bx_new, Bx
+    By, By_new = By_new, By
+    Bz, Bz_new = Bz_new, Bz
 
     Bmag = cp.sqrt(Bx**2 + By**2 + Bz**2)
     if step % 5 == 0 or not cp.all(cp.isfinite(Bmag)):
-        print(f"step {step:3d}  status unique={cp.unique(status)}  "
-              f"mean|B|={float(cp.mean(Bmag)):.6f}  "
-              f"max|B|={float(cp.max(Bmag)):.6f}  "
-              f"mean Ppar={float(cp.mean(Ppar)):.6f}  "
-              f"mean Pperp={float(cp.mean(Pperp)):.6f}")
+        uniq, counts = cp.unique(status, return_counts=True)
+        ratio = float(cp.mean(Ppar) / (cp.mean(Pperp) + 1e-12))
+        print(f"step {step:3d}  status={dict(zip(uniq.get().tolist(), counts.get().tolist()))}  "
+              f"mean|B|={float(cp.mean(Bmag)):.6f}  max|B|={float(cp.max(Bmag)):.6f}  "
+              f"Ppar={float(cp.mean(Ppar)):.6f} (min {float(cp.min(Ppar)):.6f})  "
+              f"Pperp={float(cp.mean(Pperp)):.6f} (min {float(cp.min(Pperp)):.6f})  "
+              f"ratio={ratio:.4f}")
         if not cp.all(cp.isfinite(Bmag)):
             print("NaN detected — stopping")
             break
