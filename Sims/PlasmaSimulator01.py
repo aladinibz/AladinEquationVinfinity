@@ -223,7 +223,7 @@ void ct_curl_kernel(
 }
 ''', 'ct_curl_kernel')
 
-# ---------- glm (race-free: separate psi_new buffer) ----------
+# ---------- glm (race-free) ----------
 glm_kernel = cp.RawKernel(r'''
 extern "C" __global__
 void glm_kernel(const float* Bx, const float* By, const float* Bz,
@@ -257,7 +257,7 @@ mass = np.float32(1.0)
 thermal_scale = np.float32(1.0)
 alpha_par = np.float32(0.5)
 alpha_perp = np.float32(0.5)
-n_steps = 20
+n_steps = 100
 
 rho = cp.ones((Ni, Ni, Ni), dtype=cp.float32)
 mx = cp.zeros_like(rho)
@@ -307,7 +307,7 @@ def build_M_target():
     M_target[:, 2] = cp.clip(2.0 * Pperp / r, 1e-6, 8.0)
     M_target[:, 3] = cp.clip(Ppar / r,        1e-6, 8.0)
 
-print("Plasma simulator starting (race-free GLM) ...")
+print("Plasma simulator starting (race-free, 100 steps) ...")
 for step in range(n_steps):
     build_M_target()
     gyrotropic_12_kernel((blocks_g,), (threads_g,),
@@ -327,11 +327,13 @@ for step in range(n_steps):
     Bz, Bz_new = Bz_new, Bz
 
     Bmag = cp.sqrt(Bx**2 + By**2 + Bz**2)
-    if step % 5 == 0 or not cp.all(cp.isfinite(Bmag)):
+    if step % 10 == 0 or not cp.all(cp.isfinite(Bmag)):
         uniq, counts = cp.unique(status, return_counts=True)
         ratio = float(cp.mean(Ppar) / (cp.mean(Pperp) + 1e-12))
+        E_mag = float(cp.mean(Bmag**2))
         print(f"step {step:3d}  status={dict(zip(uniq.get().tolist(), counts.get().tolist()))}  "
               f"mean|B|={float(cp.mean(Bmag)):.6f}  max|B|={float(cp.max(Bmag)):.6f}  "
+              f"E_mag={E_mag:.8f}  "
               f"Ppar={float(cp.mean(Ppar)):.6f} (min {float(cp.min(Ppar)):.6f})  "
               f"Pperp={float(cp.mean(Pperp)):.6f} (min {float(cp.min(Pperp)):.6f})  "
               f"ratio={ratio:.4f}")
@@ -341,3 +343,4 @@ for step in range(n_steps):
 
 print("Done.")
 print("Final mean Ppar / Pperp =", float(cp.mean(Ppar)), float(cp.mean(Pperp)))
+print("Final E_mag =", float(cp.mean(Bmag**2)))
