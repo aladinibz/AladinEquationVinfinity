@@ -1,6 +1,7 @@
 import cupy as cp
 import numpy as np
 
+# ---------- KERNEL (paste once) ----------
 gyrotropic_12_kernel = cp.RawKernel(r'''
 #define N_FEAT 12
 #define N_FREE 9
@@ -402,3 +403,46 @@ void gyrotropic_12_kernel(
     qperp_out[idx] = qperp;
 }
 ''', 'gyrotropic_12_kernel')
+
+# ---------- TEST CELL (better start) ----------
+Ncells = 128
+M_target = cp.ones((Ncells, 12), dtype=cp.float32)
+M_target[:, 0] = 1.0
+M_target[:, 2] = 1.0
+M_target[:, 3] = 1.0
+
+n_in = cp.ones(Ncells, dtype=cp.float32)
+
+# Maxwellian-friendly cold start
+lambda_io = cp.zeros((Ncells, 12), dtype=cp.float32)
+lambda_io[:, 6]  = -0.5
+lambda_io[:, 8]  = -1.0
+lambda_io[:, 10] = -0.5
+
+n_out  = cp.empty(Ncells, dtype=cp.float32)
+upar   = cp.empty(Ncells, dtype=cp.float32)
+Ppar   = cp.empty(Ncells, dtype=cp.float32)
+Pperp  = cp.empty(Ncells, dtype=cp.float32)
+qpar   = cp.empty(Ncells, dtype=cp.float32)
+qperp  = cp.empty(Ncells, dtype=cp.float32)
+margin = cp.empty(Ncells, dtype=cp.float32)
+status = cp.zeros(Ncells, dtype=cp.int32)
+
+threads = 64
+blocks  = (Ncells + 63) // 64
+
+gyrotropic_12_kernel(
+    (blocks,), (threads,),
+    (M_target, n_in, lambda_io,
+     n_out, upar, Ppar, Pperp, qpar, qperp,
+     margin, status, Ncells,
+     np.float32(1.0), np.float32(1.0),
+     np.float32(0.5), np.float32(0.5))
+)
+
+print("status unique:", cp.unique(status).get())
+print("Ppar  sample:", Ppar[:4].get())
+print("Pperp sample:", Pperp[:4].get())
+print("max |qpar| :", float(cp.max(cp.abs(qpar))))
+print("max |qperp|:", float(cp.max(cp.abs(qperp))))
+print("margin sample:", margin[:4].get())
