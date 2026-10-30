@@ -312,9 +312,9 @@ void gyrotropic_12_kernel(
 }
 ''', 'gyrotropic_12_kernel')
 
-# ---------- GENERATE CONSISTENT TARGET FROM BASE GAUSSIAN ----------
-def compute_base_moments(alpha_par=0.5, alpha_perp=0.5):
-    """Exact moments of the pure base Gaussian on the kernel quadrature."""
+# ---------- GENERATE MILD NON-MAXWELLIAN TARGET ----------
+def compute_moments_with_heatflux(alpha_par=0.5, alpha_perp=0.5, lambda_heat=0.15):
+    """Base Gaussian + small parallel heat-flux feature."""
     np_h = np.array([-6.5,-5.5,-4.5,-3.5,-2.5,-1.5,-0.5,0.5,1.5,2.5,3.5,4.5,5.5,6.5,7.5,-7.5], dtype=np.float32)
     wp_h = np.array([0.001,0.004,0.012,0.03,0.07,0.13,0.19,0.19,0.13,0.07,0.03,0.012,0.004,0.001,0.0003,0.0003], dtype=np.float32)
     nq_h = np.array([0.2,0.55,1.0,1.5,2.1,2.8,3.6,4.5,5.6,6.8,8.2,10.0], dtype=np.float32)
@@ -338,23 +338,26 @@ def compute_base_moments(alpha_par=0.5, alpha_perp=0.5):
             cp = np_h[ip]
             c2 = nq_h[iq]**2
             w = wp_h[ip] * wq_h[iq] * nq_h[iq]
-            e = -alpha_par*cp*cp - alpha_perp*c2
+            # pure base + mild heat-flux feature (index 4)
+            e = -alpha_par*cp*cp - alpha_perp*c2 + lambda_heat * (cp / (1.0 + cp*cp))
             wgt = np.exp(e) * w
             Z += wgt
             M += wgt * phi(cp, c2)
     return M / Z
 
-M_base = compute_base_moments()
-print("Base moments (should be realizable):")
-print(M_base)
+M_heat = compute_moments_with_heatflux(lambda_heat=0.15)
+print("Mild heat-flux moments:")
+print("M[4] (heat-flux feature):", M_heat[4])
+print("M[2], M[3]:", M_heat[2], M_heat[3])
 
 # ---------- TEST CELL ----------
 Ncells = 128
-M_target = cp.tile(cp.asarray(M_base), (Ncells, 1)).astype(cp.float32)
+M_target = cp.tile(cp.asarray(M_heat), (Ncells, 1)).astype(cp.float32)
 
 n_in = cp.ones(Ncells, dtype=cp.float32)
 lambda_io = cp.zeros((Ncells, 12), dtype=cp.float32)
-# warm start close to pure base Gaussian
+# warm start with a little heat-flux multiplier
+lambda_io[:, 4]  = 0.1
 lambda_io[:, 6]  = -0.05
 lambda_io[:, 8]  = -0.05
 lambda_io[:, 10] = -0.05
@@ -387,4 +390,4 @@ print("Pperp sample:", Pperp[:4].get())
 print("max |qpar| :", float(cp.max(cp.abs(qpar))))
 print("max |qperp|:", float(cp.max(cp.abs(qperp))))
 print("margin sample:", margin[:4].get())
-print("target M[2], M[3]:", M_base[2], M_base[3])
+print("target M[4]:", M_heat[4])
