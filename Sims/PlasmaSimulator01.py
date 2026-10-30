@@ -13,7 +13,113 @@ try:
 except Exception:
     raise RuntimeError("Enable T4/A100 GPU: Runtime → Change runtime type → GPU")
 
-# ---------- ct_emf (global memory only) ----------
+# ---------- gyrotropic_12_kernel ----------
+gyrotropic_12_kernel = cp.RawKernel(r'''
+#define N_FEAT 12
+#define MAX_NEWTON 6
+#define RES_TOL 2.0e-3f
+
+__device__ __forceinline__ void eval_phi(float cp, float c2, float p[N_FEAT]) {
+    float cp2 = cp*cp, cp3 = cp2*cp, cp4 = cp2*cp2;
+    float c4 = c2*c2, c6 = c4*c2;
+    float idp = 1.f/(1.f+cp2), ide = 1.f/(1.f+c2);
+    p[0]=1.f; p[1]=cp; p[2]=c2; p[3]=cp2;
+    p[4]=cp*idp; p[5]=cp*c2*ide;
+    p[6]=c4; p[7]=cp2*c2; p[8]=cp4;
+    p[9]=cp3*idp*idp; p[10]=c6*ide; p[11]=cp2*c4*ide;
+}
+
+__constant__ float np[16]={-6.5f,-5.5f,-4.5f,-3.5f,-2.5f,-1.5f,-0.5f,0.5f,1.5f,2.5f,3.5f,4.5f,5.5f,6.5f,7.5f,-7.5f};
+__constant__ float wp[16]={0.001f,0.004f,0.012f,0.03f,0.07f,0.13f,0.19f,0.19f,0.13f,0.07f,0.03f,0.012f,0.004f,0.001f,0.0003f,0.0003f};
+__constant__ float nq[12]={0.2f,0.55f,1.0f,1.5f,2.1f,2.8f,3.6f,4.5f,5.6f,6.8f,8.2f,10.0f};
+__constant__ float wq[12]={0.06f,0.12f,0.16f,0.17f,0.15f,0.12f,0.08f,0.05f,0.03f,0.015f,0.008f,0.003f};
+
+__device__ void set_from_free(float eta, float zeta, float xi, const float* low, float* lam) {
+    float a = expf(eta), b = expf(zeta);
+    float s = 0.95f * tanhf(xi);
+    lam[0] = low[0];
+    lam[1] = low[1];
+    lam[2] = low[2];
+    lam[3] = low[3];
+    lam[4] = low[4];
+    lam[5] = low[5];
+    lam[6] = -b*b;
+    lam[7] = -2.f*a*b*s;
+    lam[8] = -a*a;
+    lam[9] = 0.f;
+    lam[10] = 0.f;
+    lam[11] = 0.f;
+}
+
+__device__ bool moments(const float* lam, float ap, float ae, float* M) {
+    float Z = 0.f;
+    for (int k = 0; k < N_FEAT; ++k) M[k] = 0.f;
+    for (int ip = 0; ip < 16; ++ip) {
+        float cp = np[ip];
+        float w_par = wp[ip];
+        for (int iq = 0; iq < 12; ++iq) {
+            float c2 = nq[iq]*nq[iq];
+            float w = w_par * wq[iq] * expf(-0.5f*(ap*cp*cp + ae*c2));
+            float expo = 0.f;
+            float phi[N_FEAT];
+            eval_phi(cp, c2, phi);
+            for (int k = 0; k < N_FEAT; ++k) expo += lam[k]*phi[k];
+            float f = w * expf(fminf(expo, 40.f));
+            Z += f;
+            for (int k = 0; k < N_FEAT; ++k) M[k] += f * phi[k];
+        }
+    }
+    if (Z < 1e-30f) return false;
+    float invZ = 1.f / Z;
+    for (int k = 0; k < N_FEAT; ++k) M[k] *= invZ;
+    return true;
+}
+
+extern "C" __global__
+void gyrotropic_12_kernel(
+    const float* M_target, const float* n_in, float* lambda_io,
+    float* n_out, float* upar_out, float* Ppar_out, float* Pperp_out,
+    float* qpar_out, float* qperp_out, int* status,
+    int Ncells, float mass, float thermal_scale, float alpha_par, float alpha_perp)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= Ncells) return;
+
+    const float* Mt = M_target + idx * N_FEAT;
+    float* lo = lambda_io + idx * N_FEAT;
+
+    float eta = 0.f, zeta = 0.f, xi = 0.f;
+    float low[6] = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
+    float lam[N_FEAT];
+    float M[N_FEAT];
+
+    int flag = 0;
+    for (int it = 0; it < MAX_NEWTON; ++it) {
+        set_from_free(eta, zeta, xi, low, lam);
+        if (!moments(lam, alpha_par, alpha_perp, M)) { flag = 6; break; }
+        float res = 0.f;
+        for (int k = 1; k < N_FEAT; ++k) res = fmaxf(res, fabsf(M[k] - Mt[k]));
+        if (res < RES_TOL) { flag = 0; break; }
+        for (int k = 0; k < 6; ++k) low[k] += 0.1f * (Mt[k+1] - M[k+1]);
+        if (it == MAX_NEWTON-1) flag = 1;
+    }
+
+    float n = n_in[idx];
+    float up = M[1];
+    float cp2 = fmaxf(M[3] - up*up, 1e-6f);
+    float ce2 = fmaxf(M[2], 1e-6f);
+    n_out[idx] = n;
+    upar_out[idx] = up;
+    Ppar_out[idx]  = mass * n * cp2;
+    Pperp_out[idx] = 0.5f * mass * n * ce2;
+    qpar_out[idx]  = mass * n * M[4] * thermal_scale;
+    qperp_out[idx] = mass * n * M[5] * thermal_scale;
+    status[idx] = flag;
+    for (int k = 0; k < N_FEAT; ++k) lo[k] = lam[k];
+}
+''', 'gyrotropic_12_kernel')
+
+# ---------- ct_emf (global memory) ----------
 ct_emf_kernel = cp.RawKernel(r'''
 extern "C" __global__
 void utc_emf_kernel(
@@ -32,7 +138,6 @@ void utc_emf_kernel(
     float vy = my[g] / r;
     float vz = mz[g] / r;
 
-    // simple face averages, guarded
     float Bz_yp = (k+1 < Ni) ? Bz[g + 1] : Bz[g];
     float By_zp = (j+1 < Ni) ? By[g + Ni] : By[g];
     float Bx_xp = (i+1 < Ni) ? Bx[g + Ni*Ni] : Bx[g];
@@ -93,28 +198,11 @@ void glm_kernel(float* Bx,float* By,float* Bz,float* psi,
 }
 ''','glm_kernel')
 
-# ---------- gyrotropic stub ----------
-gyrotropic_12_kernel = cp.RawKernel(r'''
-extern "C" __global__
-void gyrotropic_12_kernel(const float* Mt,const float* n_in,float* lam,
-                          float* n_out,float* up,float* Ppar,float* Pperp,
-                          float* qpar,float* qperp,int* status,
-                          int N,float mass,float th,float ap,float ae){
-    int i=blockIdx.x*blockDim.x+threadIdx.x;
-    if(i>=N) return;
-    float n=n_in[i];
-    Ppar[i]=mass*n*0.1f;
-    Pperp[i]=mass*n*0.1f;
-    qpar[i]=qperp[i]=0.f;
-    status[i]=0;
-}
-''','gyrotropic_12_kernel')
-
 # ---------- Driver ----------
 Ni=64
 Ncells=Ni*Ni*Ni
 dx=np.float32(1.0)
-dt=np.float32(0.001)          # smaller timestep
+dt=np.float32(0.001)
 inv2dx=np.float32(0.5/dx)
 mass=np.float32(1.0)
 thermal_scale=np.float32(1.0)
@@ -160,8 +248,14 @@ blocks=((Ni+15)//16,(Ni+3)//4,(Ni+3)//4)
 threads_g=128
 blocks_g=(Ncells+127)//128
 
+def build_M_target():
+    M_target[:,0] = 1.0
+    M_target[:,2] = cp.clip(Pperp / (rho.ravel()+1e-8), 1e-6, 5.0)
+    M_target[:,3] = cp.clip(Ppar  / (rho.ravel()+1e-8), 1e-6, 5.0)
+
 print("Plasma simulator starting ...")
 for step in range(n_steps):
+    build_M_target()
     gyrotropic_12_kernel((blocks_g,),(threads_g,),
         (M_target,n_in,lambda_io,n_out,upar,Ppar,Pperp,qpar,qperp,
          status,np.int32(Ncells),mass,thermal_scale,alpha_par,alpha_perp))
@@ -174,10 +268,9 @@ for step in range(n_steps):
 
     Bmag = cp.sqrt(Bx**2 + By**2 + Bz**2)
     if step % 5 == 0 or not cp.all(cp.isfinite(Bmag)):
-        print(f"step {step:3d}  status={cp.unique(status)}  "
+        print(f"step {step:3d}  status unique={cp.unique(status)}  "
               f"mean|B|={float(cp.mean(Bmag)):.6f}  "
-              f"max|B|={float(cp.max(Bmag)):.6f}  "
-              f"finite={bool(cp.all(cp.isfinite(Bmag)))}")
+              f"mean Ppar={float(cp.mean(Ppar)):.6f}")
         if not cp.all(cp.isfinite(Bmag)):
             print("NaN detected — stopping")
             break
