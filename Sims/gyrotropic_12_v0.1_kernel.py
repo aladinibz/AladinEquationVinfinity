@@ -386,3 +386,55 @@ void gyrotropic_12_kernel(
     qperp_out[idx] = qperp;
 }
 ''', 'gyrotropic_12_kernel')
+
+# ---------- Base Gaussian test (v0.1) ----------
+def compute_base_moments(alpha_par=0.5, alpha_perp=0.5):
+    np_h = np.array([-6.5,-5.5,-4.5,-3.5,-2.5,-1.5,-0.5,0.5,1.5,2.5,3.5,4.5,5.5,6.5,7.5,-7.5], dtype=np.float32)
+    wp_h = np.array([0.001,0.004,0.012,0.03,0.07,0.13,0.19,0.19,0.13,0.07,0.03,0.012,0.004,0.001,0.0003,0.0003], dtype=np.float32)
+    nq_h = np.array([0.2,0.55,1.0,1.5,2.1,2.8,3.6,4.5,5.6,6.8,8.2,10.0], dtype=np.float32)
+    wq_h = np.array([0.06,0.12,0.16,0.17,0.15,0.12,0.08,0.05,0.03,0.015,0.008,0.003], dtype=np.float32)
+    def phi(cp, c2):
+        cp2 = cp*cp; idp = 1.0/(1.0+cp2); ide = 1.0/(1.0+c2)
+        return np.array([1, cp, c2, cp2, cp*idp, cp*c2*ide, c2*c2, cp2*c2, cp2*cp2,
+                         (cp**3)*idp*idp, (c2**3)*ide, cp2*(c2**2)*ide], dtype=np.float32)
+    Z, M = 0.0, np.zeros(12, dtype=np.float32)
+    for ip in range(16):
+        for iq in range(12):
+            cp, c2 = np_h[ip], nq_h[iq]**2
+            w = wp_h[ip] * wq_h[iq] * nq_h[iq]
+            wgt = np.exp(-alpha_par*cp*cp - alpha_perp*c2) * w
+            Z += wgt; M += wgt * phi(cp, c2)
+    return M / Z
+
+M_base = compute_base_moments()
+Ncells = 128
+M_target = cp.tile(cp.asarray(M_base), (Ncells, 1)).astype(cp.float32)
+n_in = cp.ones(Ncells, dtype=cp.float32)
+lambda_io = cp.zeros((Ncells, 12), dtype=cp.float32)
+lambda_io[:,6] = lambda_io[:,8] = lambda_io[:,10] = -0.05
+
+n_out = cp.empty(Ncells, dtype=cp.float32)
+upar = cp.empty(Ncells, dtype=cp.float32)
+Ppar = cp.empty(Ncells, dtype=cp.float32)
+Pperp = cp.empty(Ncells, dtype=cp.float32)
+qpar = cp.empty(Ncells, dtype=cp.float32)
+qperp = cp.empty(Ncells, dtype=cp.float32)
+margin = cp.empty(Ncells, dtype=cp.float32)
+M_recon = cp.empty((Ncells, 12), dtype=cp.float32)
+status = cp.zeros(Ncells, dtype=cp.int32)
+
+threads, blocks = 64, (Ncells + 63) // 64
+gyrotropic_12_kernel(
+    (blocks,), (threads,),
+    (M_target, n_in, lambda_io,
+     n_out, upar, Ppar, Pperp, qpar, qperp,
+     margin, M_recon, status, Ncells,
+     np.float32(1.0), np.float32(1.0),
+     np.float32(0.5), np.float32(0.5))
+)
+
+print("status unique:", cp.unique(status).get())
+print("Ppar sample:", Ppar[:2].get())
+print("Pperp sample:", Pperp[:2].get())
+print("max |M_recon - target|:", float(cp.max(cp.abs(M_recon - M_target))))
+print("margin sample:", margin[:2].get())
