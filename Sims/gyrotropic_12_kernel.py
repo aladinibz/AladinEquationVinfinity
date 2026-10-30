@@ -1,8 +1,6 @@
 import cupy as cp
 import numpy as np
 
-# Status: 0=ok 1=maxiter 2=chol 3=ls 5=badtarget 6=moments 7=tail
-
 gyrotropic_12_kernel = cp.RawKernel(r'''
 #define N_FEAT 12
 #define N_FREE 9
@@ -244,27 +242,13 @@ void gyrotropic_12_kernel(
     if (idx >= Ncells) return;
 
     __shared__ float s_np[16], s_wp[16], s_nq[12], s_wq[12];
-
-    if (threadIdx.x < 32) {
-        const float4* g_np = reinterpret_cast<const float4*>(np);
-        const float4* g_wp = reinterpret_cast<const float4*>(wp);
-        float4* s_np4 = reinterpret_cast<float4*>(s_np);
-        float4* s_wp4 = reinterpret_cast<float4*>(s_wp);
-        #pragma unroll
-        for (int i = threadIdx.x; i < 4; i += 32) {
-            cp.async.cg.shared.global(&s_np4[i], &g_np[i], 16);
-            cp.async.cg.shared.global(&s_wp4[i], &g_wp[i], 16);
-        }
-        if (threadIdx.x < 3) {
-            const float4* g_nq = reinterpret_cast<const float4*>(nq);
-            const float4* g_wq = reinterpret_cast<const float4*>(wq);
-            float4* s_nq4 = reinterpret_cast<float4*>(s_nq);
-            float4* s_wq4 = reinterpret_cast<float4*>(s_wq);
-            cp.async.cg.shared.global(&s_nq4[threadIdx.x], &g_nq[threadIdx.x], 16);
-            cp.async.cg.shared.global(&s_wq4[threadIdx.x], &g_wq[threadIdx.x], 16);
-        }
-        cp.async.commit_group();
-        cp.async.wait_group<0>();
+    if (threadIdx.x < 16) {
+        s_np[threadIdx.x] = np[threadIdx.x];
+        s_wp[threadIdx.x] = wp[threadIdx.x];
+    }
+    if (threadIdx.x < 12) {
+        s_nq[threadIdx.x] = nq[threadIdx.x];
+        s_wq[threadIdx.x] = wq[threadIdx.x];
     }
     __syncthreads();
 
@@ -345,7 +329,6 @@ void gyrotropic_12_kernel(
                 if (!moments_only(lam2, ap, ae, M2, s_np, s_wp, s_nq, s_wq)) { al *= 0.5f; continue; }
                 float obj2 = moment_objective(M2, Mt);
                 if (obj2 < obj) {
-                    // correct predicted reduction
                     float gdx = 0.f, dxHdx = 0.f;
                     for (int p = 0; p < N_FREE; ++p) {
                         gdx += rhs[p] * dx[p];
