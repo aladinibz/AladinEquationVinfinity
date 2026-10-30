@@ -6,6 +6,7 @@ except ImportError:
     import cupy as cp
 import numpy as np
 import csv
+from tqdm.auto import tqdm
 
 # GPU check
 try:
@@ -14,10 +15,10 @@ try:
 except Exception:
     raise RuntimeError("Enable T4/A100 GPU: Runtime → Change runtime type → GPU")
 
-# ---------- gyrotropic_12_kernel (eta/zeta/xi free, zeta step = 0.01) ----------
+# ---------- gyrotropic_12_kernel (now also outputs residual) ----------
 gyrotropic_12_kernel = cp.RawKernel(r'''
 #define N_FEAT 12
-#define MAX_NEWTON 8
+#define MAX_NEWTON 12
 #define RES_TOL 2.0e-3f
 
 __device__ __forceinline__ void eval_phi(float cp, float c2, float p[N_FEAT]) {
@@ -85,7 +86,7 @@ extern "C" __global__
 void gyrotropic_12_kernel(
     const float* M_target, const float* n_in, float* lambda_io,
     float* n_out, float* upar_out, float* Ppar_out, float* Pperp_out,
-    float* qpar_out, float* qperp_out, int* status,
+    float* qpar_out, float* qperp_out, float* residual_out, int* status,
     int Ncells, float mass, float thermal_scale, float alpha_par, float alpha_perp)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -99,6 +100,7 @@ void gyrotropic_12_kernel(
     float lam[N_FEAT];
     float M[N_FEAT];
     float m3_par = 0.f, m3_mix = 0.f;
+    float final_res = 1e9f;
 
     int flag = 0;
     for (int it = 0; it < MAX_NEWTON; ++it) {
@@ -107,16 +109,17 @@ void gyrotropic_12_kernel(
 
         float res = 0.f;
         for (int k = 1; k < N_FEAT; ++k) res = fmaxf(res, fabsf(M[k] - Mt[k]));
+        final_res = res;
         if (res < RES_TOL) { flag = 0; break; }
 
-        for (int k = 0; k < 6; ++k) low[k] += 0.12f * (Mt[k+1] - M[k+1]);
+        for (int k = 0; k < 6; ++k) low[k] += 0.08f * (Mt[k+1] - M[k+1]);
 
         float r6 = Mt[6] - M[6];
         float r7 = Mt[7] - M[7];
         float r8 = Mt[8] - M[8];
-        eta  += 0.04f * r8;
-        zeta += 0.01f * r6;
-        xi   += 0.02f * r7;
+        eta  += 0.03f * r8;
+        zeta += 0.008f * r6;
+        xi   += 0.015f * r7;
         eta  = fmaxf(fminf(eta,  2.5f), -2.5f);
         zeta = fmaxf(fminf(zeta, 2.5f), -2.5f);
         xi   = fmaxf(fminf(xi,   2.0f), -2.0f);
@@ -138,6 +141,7 @@ void gyrotropic_12_kernel(
     Pperp_out[idx] = 0.5f * mass * n * ce2;
     qpar_out[idx]  = qpar;
     qperp_out[idx] = qperp;
+    residual_out[idx] = final_res;
     status[idx] = flag;
     for (int k = 0; k < N_FEAT; ++k) lo[k] = lam[k];
 }
@@ -258,7 +262,7 @@ mass = np.float32(1.0)
 thermal_scale = np.float32(1.0)
 alpha_par = np.float32(0.5)
 alpha_perp = np.float32(0.5)
-n_steps = 100
+n_steps = 500
 
 rho = cp.ones((Ni, Ni, Ni), dtype=cp.float32)
 mx = cp.zeros_like(rho)
@@ -285,6 +289,7 @@ Ppar = cp.zeros(Ncells, dtype=cp.float32)
 Pperp = cp.zeros(Ncells, dtype=cp.float32)
 qpar = cp.zeros(Ncells, dtype=cp.float32)
 qperp = cp.zeros(Ncells, dtype=cp.float32)
+residual = cp.zeros(Ncells, dtype=cp.float32)
 status = cp.zeros(Ncells, dtype=cp.int32)
 
 def init_disk():
@@ -309,19 +314,20 @@ def build_M_target():
     M_target[:, 3] = cp.clip(Ppar / r,        1e-6, 8.0)
 
 # CSV log
-csv_path = "/content/plasma_diag.csv"
+csv_path = "/content/plasma_diag_500.csv"
 with open(csv_path, "w", newline="") as f:
     writer = csv.writer(f)
-    writer.writerow(["step", "status_0", "status_1", "status_2", "status_5", "status_6", "status_7",
+    writer.writerow(["step", "status_0", "status_1", "mean_residual", "max_residual",
                      "mean_B", "max_B", "E_mag",
-                     "mean_Ppar", "min_Ppar", "mean_Pperp", "min_Pperp", "ratio"])
+                     "mean_Ppar", "mean_Pperp", "ratio",
+                     "mean_radial_force", "max_radial_force"])
 
-print("Plasma simulator starting (race-free, 100 steps, CSV log) ...")
-for step in range(n_steps):
+print("Plasma simulator starting (500 steps, residual + radial force) ...")
+for step in tqdm(range(n_steps), desc="plasma steps"):
     build_M_target()
     gyrotropic_12_kernel((blocks_g,), (threads_g,),
         (M_target, n_in, lambda_io, n_out, upar, Ppar, Pperp, qpar, qperp,
-         status, np.int32(Ncells), mass, thermal_scale, alpha_par, alpha_perp))
+         residual, status, np.int32(Ncells), mass, thermal_scale, alpha_par, alpha_perp))
     ct_emf_kernel(blocks, threads,
         (rho, mx, my, mz, Bx, By, Bz, Ppar, Pperp, Emfx, Emfy, Emfz, np.int32(Ni)))
     ct_curl_kernel(blocks, threads,
@@ -335,35 +341,51 @@ for step in range(n_steps):
     By, By_new = By_new, By
     Bz, Bz_new = Bz_new, Bz
 
-    Bmag = cp.sqrt(Bx**2 + By**2 + Bz**2)
-    if step % 5 == 0 or not cp.all(cp.isfinite(Bmag)):
+    if step % 10 == 0 or not cp.all(cp.isfinite(Bx)):
         uniq, counts = cp.unique(status, return_counts=True)
         sc = {int(u): int(c) for u, c in zip(uniq.get(), counts.get())}
-        s0 = sc.get(0, 0); s1 = sc.get(1, 0); s2 = sc.get(2, 0)
-        s5 = sc.get(5, 0); s6 = sc.get(6, 0); s7 = sc.get(7, 0)
+        s0 = sc.get(0, 0); s1 = sc.get(1, 0)
+        mean_res = float(cp.mean(residual))
+        max_res  = float(cp.max(residual))
+        Bmag = cp.sqrt(Bx**2 + By**2 + Bz**2)
         mean_B = float(cp.mean(Bmag))
         max_B  = float(cp.max(Bmag))
         E_mag  = float(cp.mean(Bmag**2))
-        mean_Ppar  = float(cp.mean(Ppar));  min_Ppar  = float(cp.min(Ppar))
-        mean_Pperp = float(cp.mean(Pperp)); min_Pperp = float(cp.min(Pperp))
+        mean_Ppar  = float(cp.mean(Ppar))
+        mean_Pperp = float(cp.mean(Pperp))
         ratio = mean_Ppar / (mean_Pperp + 1e-12)
 
-        print(f"step {step:3d}  status0/1/6={s0}/{s1}/{s6}  "
-              f"mean|B|={mean_B:.6f}  max|B|={max_B:.6f}  E_mag={E_mag:.8f}  "
-              f"Ppar={mean_Ppar:.6f} (min {min_Ppar:.6f})  "
-              f"Pperp={mean_Pperp:.6f} (min {min_Pperp:.6f})  ratio={ratio:.4f}")
+        # simple radial force diagnostic (anisotropy contribution)
+        # approximate radial direction from center
+        i = cp.arange(Ni, dtype=cp.float32)
+        X, Y, _ = cp.meshgrid(i, i, i, indexing='ij')
+        R = cp.sqrt((X - Ni/2)**2 + (Y - Ni/2)**2) + 1e-3
+        rx = (X - Ni/2) / R
+        ry = (Y - Ni/2) / R
+        # pressure force proxy: (Ppar - Pperp) * |b·∇|b| roughly
+        dP = Ppar - Pperp
+        # very simple radial projection of anisotropic pressure force
+        radial_force = dP * (rx * Bx + ry * By) / (Bmag + 1e-8)
+        mean_rf = float(cp.mean(radial_force))
+        max_rf  = float(cp.max(cp.abs(radial_force)))
+
+        tqdm.write(f"step {step:3d}  status0/1={s0}/{s1}  "
+                   f"res={mean_res:.4f}/{max_res:.4f}  "
+                   f"mean|B|={mean_B:.5f} max|B|={max_B:.5f}  "
+                   f"ratio={ratio:.4f}  radial_force={mean_rf:.6f}")
 
         with open(csv_path, "a", newline="") as f:
             writer = csv.writer(f)
-            writer.writerow([step, s0, s1, s2, s5, s6, s7,
+            writer.writerow([step, s0, s1, mean_res, max_res,
                              mean_B, max_B, E_mag,
-                             mean_Ppar, min_Ppar, mean_Pperp, min_Pperp, ratio])
+                             mean_Ppar, mean_Pperp, ratio,
+                             mean_rf, max_rf])
 
         if not cp.all(cp.isfinite(Bmag)):
-            print("NaN detected — stopping")
+            tqdm.write("NaN detected — stopping")
             break
 
 print("Done.")
-print("Final mean Ppar / Pperp =", float(cp.mean(Ppar)), float(cp.mean(Pperp)))
-print("Final E_mag =", float(cp.mean(Bmag**2)))
+print("Final mean residual =", float(cp.mean(residual)))
+print("Final status 0 count =", int(cp.sum(status == 0)))
 print("CSV written to", csv_path)
