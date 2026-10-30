@@ -5,6 +5,7 @@ except ImportError:
     subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "cupy-cuda12x"])
     import cupy as cp
 import numpy as np
+import csv
 
 # GPU check
 try:
@@ -307,7 +308,15 @@ def build_M_target():
     M_target[:, 2] = cp.clip(2.0 * Pperp / r, 1e-6, 8.0)
     M_target[:, 3] = cp.clip(Ppar / r,        1e-6, 8.0)
 
-print("Plasma simulator starting (race-free, 100 steps) ...")
+# CSV log
+csv_path = "/content/plasma_diag.csv"
+with open(csv_path, "w", newline="") as f:
+    writer = csv.writer(f)
+    writer.writerow(["step", "status_0", "status_1", "status_2", "status_5", "status_6", "status_7",
+                     "mean_B", "max_B", "E_mag",
+                     "mean_Ppar", "min_Ppar", "mean_Pperp", "min_Pperp", "ratio"])
+
+print("Plasma simulator starting (race-free, 100 steps, CSV log) ...")
 for step in range(n_steps):
     build_M_target()
     gyrotropic_12_kernel((blocks_g,), (threads_g,),
@@ -327,16 +336,29 @@ for step in range(n_steps):
     Bz, Bz_new = Bz_new, Bz
 
     Bmag = cp.sqrt(Bx**2 + By**2 + Bz**2)
-    if step % 10 == 0 or not cp.all(cp.isfinite(Bmag)):
+    if step % 5 == 0 or not cp.all(cp.isfinite(Bmag)):
         uniq, counts = cp.unique(status, return_counts=True)
-        ratio = float(cp.mean(Ppar) / (cp.mean(Pperp) + 1e-12))
-        E_mag = float(cp.mean(Bmag**2))
-        print(f"step {step:3d}  status={dict(zip(uniq.get().tolist(), counts.get().tolist()))}  "
-              f"mean|B|={float(cp.mean(Bmag)):.6f}  max|B|={float(cp.max(Bmag)):.6f}  "
-              f"E_mag={E_mag:.8f}  "
-              f"Ppar={float(cp.mean(Ppar)):.6f} (min {float(cp.min(Ppar)):.6f})  "
-              f"Pperp={float(cp.mean(Pperp)):.6f} (min {float(cp.min(Pperp)):.6f})  "
-              f"ratio={ratio:.4f}")
+        sc = {int(u): int(c) for u, c in zip(uniq.get(), counts.get())}
+        s0 = sc.get(0, 0); s1 = sc.get(1, 0); s2 = sc.get(2, 0)
+        s5 = sc.get(5, 0); s6 = sc.get(6, 0); s7 = sc.get(7, 0)
+        mean_B = float(cp.mean(Bmag))
+        max_B  = float(cp.max(Bmag))
+        E_mag  = float(cp.mean(Bmag**2))
+        mean_Ppar  = float(cp.mean(Ppar));  min_Ppar  = float(cp.min(Ppar))
+        mean_Pperp = float(cp.mean(Pperp)); min_Pperp = float(cp.min(Pperp))
+        ratio = mean_Ppar / (mean_Pperp + 1e-12)
+
+        print(f"step {step:3d}  status0/1/6={s0}/{s1}/{s6}  "
+              f"mean|B|={mean_B:.6f}  max|B|={max_B:.6f}  E_mag={E_mag:.8f}  "
+              f"Ppar={mean_Ppar:.6f} (min {min_Ppar:.6f})  "
+              f"Pperp={mean_Pperp:.6f} (min {min_Pperp:.6f})  ratio={ratio:.4f}")
+
+        with open(csv_path, "a", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow([step, s0, s1, s2, s5, s6, s7,
+                             mean_B, max_B, E_mag,
+                             mean_Ppar, min_Ppar, mean_Pperp, min_Pperp, ratio])
+
         if not cp.all(cp.isfinite(Bmag)):
             print("NaN detected — stopping")
             break
@@ -344,3 +366,4 @@ for step in range(n_steps):
 print("Done.")
 print("Final mean Ppar / Pperp =", float(cp.mean(Ppar)), float(cp.mean(Pperp)))
 print("Final E_mag =", float(cp.mean(Bmag**2)))
+print("CSV written to", csv_path)
