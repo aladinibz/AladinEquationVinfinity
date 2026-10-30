@@ -13,7 +13,7 @@ try:
 except Exception:
     raise RuntimeError("Enable T4/A100 GPU: Runtime → Change runtime type → GPU")
 
-# ---------- gyrotropic_12_kernel (eta/zeta/xi free) ----------
+# ---------- gyrotropic_12_kernel (eta/zeta/xi free, smaller zeta step) ----------
 gyrotropic_12_kernel = cp.RawKernel(r'''
 #define N_FEAT 12
 #define MAX_NEWTON 8
@@ -114,7 +114,7 @@ void gyrotropic_12_kernel(
         float r7 = Mt[7] - M[7];
         float r8 = Mt[8] - M[8];
         eta  += 0.04f * r8;
-        zeta += 0.04f * r6;
+        zeta += 0.01f * r6;          // reduced from 0.04f
         xi   += 0.02f * r7;
         eta  = fmaxf(fminf(eta,  2.5f), -2.5f);
         zeta = fmaxf(fminf(zeta, 2.5f), -2.5f);
@@ -142,7 +142,7 @@ void gyrotropic_12_kernel(
 }
 ''', 'gyrotropic_12_kernel')
 
-# ---------- ct_emf with anisotropic pressure (scale = 0.1) ----------
+# ---------- ct_emf with anisotropic pressure (scale = 0.5) ----------
 ct_emf_kernel = cp.RawKernel(r'''
 extern "C" __global__
 void utc_emf_kernel(
@@ -184,7 +184,7 @@ void utc_emf_kernel(
     float bx = Bx[g] / Bmag, by = By[g] / Bmag, bz = Bz[g] / Bmag;
     float dP = (Ppar[g] - Pperp[g]);
 
-    float scale = 0.1f / r;
+    float scale = 0.5f / r;          // raised from 0.1f
     Ex += scale * (dP * bx * (bx*dPpar_dx + by*dPpar_dy + bz*dPpar_dz) - dPperp_dx);
     Ey += scale * (dP * by * (bx*dPpar_dx + by*dPpar_dy + bz*dPpar_dz) - dPperp_dy);
     Ez += scale * (dP * bz * (bx*dPpar_dx + by*dPpar_dy + bz*dPpar_dz) - dPperp_dz);
