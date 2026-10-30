@@ -8,20 +8,14 @@ import numpy as np
 
 # ---------- ct_emf_kernel ----------
 ct_emf_kernel = cp.RawKernel(r'''
-#define TILE_X 32
-#define TILE_Y 8
+#define TILE_X 16
+#define TILE_Y 4
 #define TILE_Z 4
-#define PAD 2
-__device__ float mc_limiter(float a, float b) {
-    if (a * b <= 0.0f) return 0.0f;
-    float min1 = 2.0f * fminf(fabsf(a), fabsf(b));
-    float min2 = 0.5f * fabsf(a + b);
-    return copysignf(fminf(min1, min2), a);
-}
+#define PAD 1
 __device__ float hodge_face_to_edge(float f1, float f2) {
     return 0.5f * (f1 + f2);
 }
-extern "C" __launch_bounds__(256, 4)
+extern "C" __launch_bounds__(256, 2)
 __global__ void utc_emf_kernel(
     const float* rho, const float* mx, const float* my, const float* mz,
     const float* Bx, const float* By, const float* Bz,
@@ -40,16 +34,10 @@ __global__ void utc_emf_kernel(
     int sy = ty + PAD;
     int sz = tz + PAD;
 
-    __shared__ float s_rho [TILE_X + 2*PAD][TILE_Y + 2*PAD][TILE_Z + 2*PAD];
-    __shared__ float s_mx  [TILE_X + 2*PAD][TILE_Y + 2*PAD][TILE_Z + 2*PAD];
-    __shared__ float s_my  [TILE_X + 2*PAD][TILE_Y + 2*PAD][TILE_Z + 2*PAD];
-    __shared__ float s_mz  [TILE_X + 2*PAD][TILE_Y + 2*PAD][TILE_Z + 2*PAD];
-    __shared__ float s_Bx  [TILE_X + 2*PAD][TILE_Y + 2*PAD][TILE_Z + 2*PAD];
-    __shared__ float s_By  [TILE_X + 2*PAD][TILE_Y + 2*PAD][TILE_Z + 2*PAD];
-    __shared__ float s_Bz  [TILE_X + 2*PAD][TILE_Y + 2*PAD][TILE_Z + 2*PAD];
-    __shared__ float s_pexy[TILE_X + 2*PAD][TILE_Y + 2*PAD][TILE_Z + 2*PAD];
-    __shared__ float s_pexz[TILE_X + 2*PAD][TILE_Y + 2*PAD][TILE_Z + 2*PAD];
-    __shared__ float s_peyz[TILE_X + 2*PAD][TILE_Y + 2*PAD][TILE_Z + 2*PAD];
+    // Only B needs the halo stencil
+    __shared__ float s_Bx[TILE_X + 2*PAD][TILE_Y + 2*PAD][TILE_Z + 2*PAD];
+    __shared__ float s_By[TILE_X + 2*PAD][TILE_Y + 2*PAD][TILE_Z + 2*PAD];
+    __shared__ float s_Bz[TILE_X + 2*PAD][TILE_Y + 2*PAD][TILE_Z + 2*PAD];
 
     int tid = tx + ty * TILE_X + tz * TILE_X * TILE_Y;
     int total_threads = blockDim.x * blockDim.y * blockDim.z;
@@ -62,31 +50,23 @@ __global__ void utc_emf_kernel(
         int lk = blockIdx.z * TILE_Z + (lz - PAD);
         if (li >= 0 && li < Ni && lj >= 0 && lj < Ni && lk >= 0 && lk < Ni) {
             int gidx = li * Ni * Ni + lj * Ni + lk;
-            s_rho[lx][ly][lz]  = rho[gidx];
-            s_mx[lx][ly][lz]   = mx[gidx];
-            s_my[lx][ly][lz]   = my[gidx];
-            s_mz[lx][ly][lz]   = mz[gidx];
-            s_Bx[lx][ly][lz]   = Bx[gidx];
-            s_By[lx][ly][lz]   = By[gidx];
-            s_Bz[lx][ly][lz]   = Bz[gidx];
-            s_pexy[lx][ly][lz] = pe_xy[gidx];
-            s_pexz[lx][ly][lz] = pe_xz[gidx];
-            s_peyz[lx][ly][lz] = pe_yz[gidx];
+            s_Bx[lx][ly][lz] = Bx[gidx];
+            s_By[lx][ly][lz] = By[gidx];
+            s_Bz[lx][ly][lz] = Bz[gidx];
         }
     }
     __syncthreads();
 
-    float rho0 = fmaxf(s_rho[sx][sy][sz], 1e-8f);
-    float vx0 = s_mx[sx][sy][sz] / rho0;
-    float vy0 = s_my[sx][sy][sz] / rho0;
-    float vz0 = s_mz[sx][sy][sz] / rho0;
+    int gidx = i * Ni * Ni + j * Ni + k;
+    float rho0 = fmaxf(rho[gidx], 1e-8f);
+    float vx0 = mx[gidx] / rho0;
+    float vy0 = my[gidx] / rho0;
+    float vz0 = mz[gidx] / rho0;
 
-    int out = i * Ni * Ni + j * Ni + k;
+    int out = gidx;
 
     // Emfx
     {
-        float rho_E = 0.25f * (s_rho[sx][sy][sz] + s_rho[sx][sy+1][sz] +
-                               s_rho[sx][sy][sz+1] + s_rho[sx][sy+1][sz+1]);
         float By_E = hodge_face_to_edge(s_By[sx][sy][sz], s_By[sx][sy+1][sz]);
         float Bz_E = hodge_face_to_edge(s_Bz[sx][sy][sz], s_Bz[sx][sy][sz+1]);
         Emfx[out] = -(vy0 * Bz_E - vz0 * By_E);
@@ -105,28 +85,6 @@ __global__ void utc_emf_kernel(
     }
 }
 ''', 'utc_emf_kernel')
-
-# ---------- ct_curl_kernel ----------
-ct_curl_kernel = cp.RawKernel(r'''
-#define TILE_X 32
-#define TILE_Y 4
-#define TILE_Z 4
-#define PAD 1
-extern "C" __launch_bounds__(512, 4)
-__global__ void ct_curl_kernel(
-    const float* Emfx, const float* Emfy, const float* Emfz,
-    float* Bx, float* By, float* Bz,
-    int Ni, float dt, float inv2dx) {
-    int i = blockIdx.x * TILE_X + threadIdx.x;
-    int j = blockIdx.y * TILE_Y + threadIdx.y;
-    int k = blockIdx.z * TILE_Z + threadIdx.z;
-    if (i < 1 || j < 1 || k < 1 || i >= Ni-1 || j >= Ni-1 || k >= Ni-1) return;
-    int idx = i * Ni * Ni + j * Ni + k;
-    float dEz_dy = (Emfz[idx + Ni] - Emfz[idx - Ni]) * inv2dx;
-    float dEy_dz = (Emfy[idx + 1] - Emfy[idx - 1]) * inv2dx;
-    Bx[idx] -= dt * (dEz_dy - dEy_dz);
-}
-''', 'ct_curl_kernel')
 
 # ---------- glm_kernel ----------
 glm_kernel = cp.RawKernel(r'''
