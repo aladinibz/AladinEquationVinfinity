@@ -13,10 +13,10 @@ try:
 except Exception:
     raise RuntimeError("Enable T4/A100 GPU: Runtime → Change runtime type → GPU")
 
-# ---------- gyrotropic_12_kernel ----------
+# ---------- gyrotropic_12_kernel (eta/zeta/xi free) ----------
 gyrotropic_12_kernel = cp.RawKernel(r'''
 #define N_FEAT 12
-#define MAX_NEWTON 6
+#define MAX_NEWTON 8
 #define RES_TOL 2.0e-3f
 
 __device__ __forceinline__ void eval_phi(float cp, float c2, float p[N_FEAT]) {
@@ -51,8 +51,9 @@ __device__ void set_from_free(float eta, float zeta, float xi, const float* low,
     lam[11] = 0.f;
 }
 
-__device__ bool moments(const float* lam, float ap, float ae, float* M) {
-    float Z = 0.f;
+__device__ bool moments(const float* lam, float ap, float ae,
+                        float* M, float* m3_par, float* m3_mix) {
+    float Z = 0.f, sum_c3 = 0.f, sum_mix = 0.f;
     for (int k = 0; k < N_FEAT; ++k) M[k] = 0.f;
     for (int ip = 0; ip < 16; ++ip) {
         float cp = np[ip];
@@ -67,11 +68,15 @@ __device__ bool moments(const float* lam, float ap, float ae, float* M) {
             float f = w * expf(fminf(expo, 40.f));
             Z += f;
             for (int k = 0; k < N_FEAT; ++k) M[k] += f * phi[k];
+            sum_c3  += f * cp*cp*cp;
+            sum_mix += f * cp * c2;
         }
     }
     if (Z < 1e-30f) return false;
     float invZ = 1.f / Z;
     for (int k = 0; k < N_FEAT; ++k) M[k] *= invZ;
+    *m3_par = sum_c3 * invZ;
+    *m3_mix = sum_mix * invZ;
     return true;
 }
 
@@ -92,15 +97,29 @@ void gyrotropic_12_kernel(
     float low[6] = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
     float lam[N_FEAT];
     float M[N_FEAT];
+    float m3_par = 0.f, m3_mix = 0.f;
 
     int flag = 0;
     for (int it = 0; it < MAX_NEWTON; ++it) {
         set_from_free(eta, zeta, xi, low, lam);
-        if (!moments(lam, alpha_par, alpha_perp, M)) { flag = 6; break; }
+        if (!moments(lam, alpha_par, alpha_perp, M, &m3_par, &m3_mix)) { flag = 6; break; }
+
         float res = 0.f;
         for (int k = 1; k < N_FEAT; ++k) res = fmaxf(res, fabsf(M[k] - Mt[k]));
         if (res < RES_TOL) { flag = 0; break; }
-        for (int k = 0; k < 6; ++k) low[k] += 0.1f * (Mt[k+1] - M[k+1]);
+
+        for (int k = 0; k < 6; ++k) low[k] += 0.12f * (Mt[k+1] - M[k+1]);
+
+        float r6 = Mt[6] - M[6];
+        float r7 = Mt[7] - M[7];
+        float r8 = Mt[8] - M[8];
+        eta  += 0.04f * r8;
+        zeta += 0.04f * r6;
+        xi   += 0.02f * r7;
+        eta  = fmaxf(fminf(eta,  2.5f), -2.5f);
+        zeta = fmaxf(fminf(zeta, 2.5f), -2.5f);
+        xi   = fmaxf(fminf(xi,   2.0f), -2.0f);
+
         if (it == MAX_NEWTON-1) flag = 1;
     }
 
@@ -108,12 +127,16 @@ void gyrotropic_12_kernel(
     float up = M[1];
     float cp2 = fmaxf(M[3] - up*up, 1e-6f);
     float ce2 = fmaxf(M[2], 1e-6f);
+
+    float qpar  = mass * n * (m3_par - 3.f*up*cp2 - up*up*up);
+    float qperp = 0.5f * mass * n * (m3_mix - up * M[2]);
+
     n_out[idx] = n;
     upar_out[idx] = up;
     Ppar_out[idx]  = mass * n * cp2;
     Pperp_out[idx] = 0.5f * mass * n * ce2;
-    qpar_out[idx]  = mass * n * M[4] * thermal_scale;
-    qperp_out[idx] = mass * n * M[5] * thermal_scale;
+    qpar_out[idx]  = qpar;
+    qperp_out[idx] = qperp;
     status[idx] = flag;
     for (int k = 0; k < N_FEAT; ++k) lo[k] = lam[k];
 }
@@ -161,7 +184,7 @@ void utc_emf_kernel(
     float bx = Bx[g] / Bmag, by = By[g] / Bmag, bz = Bz[g] / Bmag;
     float dP = (Ppar[g] - Pperp[g]);
 
-    float scale = 0.1f / r;          // raised from 0.01f
+    float scale = 0.1f / r;
     Ex += scale * (dP * bx * (bx*dPpar_dx + by*dPpar_dy + bz*dPpar_dz) - dPperp_dx);
     Ey += scale * (dP * by * (bx*dPpar_dx + by*dPpar_dy + bz*dPpar_dz) - dPperp_dy);
     Ez += scale * (dP * bz * (bx*dPpar_dx + by*dPpar_dy + bz*dPpar_dz) - dPperp_dz);
@@ -270,9 +293,10 @@ threads_g=128
 blocks_g=(Ncells+127)//128
 
 def build_M_target():
+    r = rho.ravel() + 1e-8
     M_target[:,0] = 1.0
-    M_target[:,2] = cp.clip(Pperp / (rho.ravel()+1e-8), 1e-6, 5.0)
-    M_target[:,3] = cp.clip(Ppar  / (rho.ravel()+1e-8), 1e-6, 5.0)
+    M_target[:,2] = cp.clip(2.0 * Pperp / r, 1e-6, 8.0)
+    M_target[:,3] = cp.clip(Ppar / r,        1e-6, 8.0)
 
 print("Plasma simulator starting ...")
 for step in range(n_steps):
