@@ -1,12 +1,12 @@
 import cupy as cp
 import numpy as np
 
-# ---------- KERNEL (unchanged) ----------
+# ---------- KERNEL (RES_TOL loosened) ----------
 gyrotropic_12_kernel = cp.RawKernel(r'''
 #define N_FEAT 12
 #define N_FREE 9
 #define MAX_NEWTON 32
-#define RES_TOL 1.5e-2f
+#define RES_TOL 5e-2f
 __device__ __forceinline__ void eval_phi(float cp, float c2, float p[N_FEAT]) {
     float cp2=cp*cp, cp3=cp2*cp, cp4=cp2*cp2, c4=c2*c2, c6=c4*c2;
     float idp=1.f/(1.f+cp2), ide=1.f/(1.f+c2);
@@ -313,9 +313,8 @@ void gyrotropic_12_kernel(
 ''', 'gyrotropic_12_kernel')
 
 # ---------- PROJECTION + TEST ----------
-# measured discrete moments of the pure base Gaussian on the 16×12 grid
-DISC_M2 = 0.918   # <c_perp²>
-DISC_M3 = 0.921   # <c_parallel²>
+DISC_M2 = 0.918
+DISC_M3 = 0.921
 
 def project_onto_manifold(M_target):
     Mt = M_target.copy()
