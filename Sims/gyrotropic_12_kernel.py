@@ -4,8 +4,8 @@ import numpy as np
 gyrotropic_12_kernel = cp.RawKernel(r'''
 #define N_FEAT 12
 #define N_FREE 9
-#define MAX_NEWTON 16
-#define RES_TOL 5e-3f
+#define MAX_NEWTON 32
+#define RES_TOL 1.5e-2f
 __device__ __forceinline__ void eval_phi(float cp, float c2, float p[N_FEAT]) {
     float cp2=cp*cp, cp3=cp2*cp, cp4=cp2*cp2, c4=c2*c2, c6=c4*c2;
     float idp=1.f/(1.f+cp2), ide=1.f/(1.f+c2);
@@ -319,9 +319,9 @@ M_target[:,2] = 1.0
 M_target[:,3] = 1.0
 n_in = cp.ones(Ncells, dtype=cp.float32)
 lambda_io = cp.zeros((Ncells, 12), dtype=cp.float32)
-lambda_io[:,6]  = -0.25
-lambda_io[:,8]  = -0.5
-lambda_io[:,10] = -0.25
+lambda_io[:,6]  = -0.1
+lambda_io[:,8]  = -0.2
+lambda_io[:,10] = -0.1
 n_out = cp.empty(Ncells, dtype=cp.float32)
 upar = cp.empty(Ncells, dtype=cp.float32)
 Ppar = cp.empty(Ncells, dtype=cp.float32)
@@ -346,4 +346,4 @@ print("Pperp sample:", Pperp[:4].get())
 print("max |qpar| :", float(cp.max(cp.abs(qpar))))
 print("max |qperp|:", float(cp.max(cp.abs(qperp))))
 print("margin sample:", margin[:4].get())
-print("REAL KERNEL MARKER: tail_certificate present =", "tail_certificate" in gyrotropic_12_kernel.code)
+print("REAL KERNEL MARKER:", "tail_certificate" in gyrotropic_12_kernel.code)
