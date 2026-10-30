@@ -11,6 +11,7 @@ gyrotropic_12_kernel = cp.RawKernel(r'''
 #define MAX_NEWTON 32
 #define RES_TOL 5e-2f
 
+// Feature evaluation: gyrotropic basis in (c_parallel, c_perp^2)
 __device__ __forceinline__ void eval_phi(float cp, float c2, float p[N_FEAT]) {
     float cp2 = cp*cp, cp3 = cp2*cp, cp4 = cp2*cp2;
     float c4 = c2*c2, c6 = c4*c2;
@@ -21,12 +22,16 @@ __device__ __forceinline__ void eval_phi(float cp, float c2, float p[N_FEAT]) {
     p[9]=cp3*idp*idp; p[10]=c6*ide; p[11]=cp2*c4*ide;
 }
 
+// Feature scales used for residual normalization
 __constant__ float scale[N_FEAT] = {1.f,1.f,1.f,1.f,1.f,1.f,3.f,2.f,3.f,1.f,4.f,3.f};
+
+// Fixed quadrature nodes and weights
 __constant__ float np[16] = {-6.5f,-5.5f,-4.5f,-3.5f,-2.5f,-1.5f,-0.5f,0.5f,1.5f,2.5f,3.5f,4.5f,5.5f,6.5f,7.5f,-7.5f};
 __constant__ float wp[16] = {0.001f,0.004f,0.012f,0.03f,0.07f,0.13f,0.19f,0.19f,0.13f,0.07f,0.03f,0.012f,0.004f,0.001f,0.0003f,0.0003f};
 __constant__ float nq[12] = {0.2f,0.55f,1.0f,1.5f,2.1f,2.8f,3.6f,4.5f,5.6f,6.8f,8.2f,10.0f};
 __constant__ float wq[12] = {0.06f,0.12f,0.16f,0.17f,0.15f,0.12f,0.08f,0.05f,0.03f,0.015f,0.008f,0.003f};
 
+// Map free parameters (eta, zeta, xi, low) to constrained lambda
 __device__ void set_from_free(float eta, float zeta, float xi, const float low[6], float* lambda) {
     float a = __expf(eta), b = __expf(zeta), s = 0.95f * tanhf(xi);
     float A = a*a, B = b*b, C = 2.f*a*b*s;
@@ -38,6 +43,7 @@ __device__ void set_from_free(float eta, float zeta, float xi, const float low[6
     lambda[8] = -A;
 }
 
+// Structural tail certificate: positive-definite quartic form
 __device__ bool tail_certificate(float eta, float zeta, float xi, float* margin_out) {
     float a = __expf(eta), b = __expf(zeta), s = 0.95f * tanhf(xi);
     float tr = a*a + b*b;
@@ -50,6 +56,7 @@ __device__ bool tail_certificate(float eta, float zeta, float xi, float* margin_
     return (detQ > 0.f) && (lmin > 1e-5f * tr) && (margin > 0.04f) && isfinite(detQ);
 }
 
+// Recover free parameters from previous lambda (warm start)
 __device__ void extract_free(const float* lambda, float* eta, float* zeta, float* xi, float low[6]) {
     float A = fmaxf(-lambda[8], 1e-8f);
     float B = fmaxf(-2.f * lambda[6], 1e-8f);
@@ -63,6 +70,7 @@ __device__ void extract_free(const float* lambda, float* eta, float* zeta, float
     low[3] = lambda[4]; low[4] = lambda[5]; low[5] = lambda[9];
 }
 
+// Parameter-to-multiplier Jacobian
 __device__ void jacobian(float eta, float zeta, float xi, float* J) {
     for (int i = 0; i < N_FEAT * N_FREE; ++i) J[i] = 0.f;
     float a = __expf(eta), b = __expf(zeta);
@@ -77,6 +85,7 @@ __device__ void jacobian(float eta, float zeta, float xi, float* J) {
     J[4*N_FREE + 6] = 1.f; J[5*N_FREE + 7] = 1.f; J[9*N_FREE + 8] = 1.f;
 }
 
+// Scaled least-squares moment objective
 __device__ float moment_objective(const float* M, const float* Mt) {
     float obj = 0.f;
     for (int k = 1; k < N_FEAT; ++k) {
@@ -86,6 +95,7 @@ __device__ float moment_objective(const float* M, const float* Mt) {
     return obj;
 }
 
+// Moments only (no covariance) — used in line search
 __device__ bool moments_only(const float* lambda, float ap, float ape, float* M,
                              const float* s_np, const float* s_wp, const float* s_nq, const float* s_wq) {
     float maxe = -1e30f;
@@ -116,6 +126,7 @@ __device__ bool moments_only(const float* lambda, float ap, float ape, float* M,
     return true;
 }
 
+// Full moments + covariance matrix
 __device__ bool moments(const float* lambda, float ap, float ape, float* M, float* G,
                         const float* s_np, const float* s_wp, const float* s_nq, const float* s_wq) {
     float maxe = -1e30f;
@@ -156,6 +167,7 @@ __device__ bool moments(const float* lambda, float ap, float ape, float* M, floa
     return true;
 }
 
+// Final moments + true third-order heat-flux accumulators
 __device__ bool moments_final(const float* lambda, float ap, float ape, float* M,
                               float* m3_par, float* m3_mix,
                               const float* s_np, const float* s_wp, const float* s_nq, const float* s_wq) {
@@ -191,6 +203,7 @@ __device__ bool moments_final(const float* lambda, float ap, float ape, float* M
     return true;
 }
 
+// 9x9 Cholesky solve
 __device__ bool chol9(float* H, float* rhs, float* dx) {
     float L[N_FREE*N_FREE] = {0};
     for (int i = 0; i < N_FREE; ++i)
@@ -240,11 +253,13 @@ void gyrotropic_12_kernel(
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= Ncells) return;
 
+    // Shared memory for quadrature (loaded once per block)
     __shared__ float s_np[16], s_wp[16], s_nq[12], s_wq[12];
     if (threadIdx.x < 16) { s_np[threadIdx.x] = np[threadIdx.x]; s_wp[threadIdx.x] = wp[threadIdx.x]; }
     if (threadIdx.x < 12) { s_nq[threadIdx.x] = nq[threadIdx.x]; s_wq[threadIdx.x] = wq[threadIdx.x]; }
     __syncthreads();
 
+    // Load target moments
     float Mt[N_FEAT];
     const float4* Mt4 = reinterpret_cast<const float4*>(M_target + idx * N_FEAT);
     float4 t0 = Mt4[0], t1 = Mt4[1], t2 = Mt4[2];
@@ -255,10 +270,12 @@ void gyrotropic_12_kernel(
     float* lo = lambda_io + idx * N_FEAT;
     int flag = 0;
 
+    // Basic input validity
     float n = n_in[idx];
     if (!(n > 0.f) || !(mass > 0.f) || !(thermal_scale > 0.f)) flag = 5;
     if (Mt[2] < 1e-8f || Mt[3] < 1e-8f) flag = 5;
 
+    // Warm-start free parameters
     float eta, zeta, xi, low[6];
     extract_free(lo, &eta, &zeta, &xi, low);
 
@@ -271,6 +288,7 @@ void gyrotropic_12_kernel(
     int chol_fails = 0, ls_fails = 0;
     float lambda[N_FEAT], M[N_FEAT];
 
+    // Gauss-Newton loop
     if (flag == 0) {
         for (int it = 0; it < MAX_NEWTON; ++it) {
             set_from_free(eta, zeta, xi, low, lambda);
@@ -286,6 +304,7 @@ void gyrotropic_12_kernel(
             float J[N_FEAT * N_FREE];
             jacobian(eta, zeta, xi, J);
 
+            // Build D = G J (scaled) and normal equations
             float H[N_FREE * N_FREE] = {0}, rhs[N_FREE] = {0}, dx[N_FREE];
             for (int i = 1; i < N_FEAT; ++i) {
                 float ri = (M[i] - Mt[i]) / scale[i];
@@ -313,6 +332,7 @@ void gyrotropic_12_kernel(
             }
             chol_fails = 0;
 
+            // Line search on moment objective
             float al = 0.8f;
             bool accepted = false;
             for (int ls = 0; ls < 4; ++ls) {
@@ -340,6 +360,7 @@ void gyrotropic_12_kernel(
         }
     }
 
+    // Final reconstruction and heat-flux moments
     float m3_par = 0.f, m3_mix = 0.f;
     set_from_free(eta, zeta, xi, low, lambda);
     bool ok_final = moments_final(lambda, ap, ae, M, &m3_par, &m3_mix, s_np, s_wp, s_nq, s_wq);
@@ -348,6 +369,7 @@ void gyrotropic_12_kernel(
     tail_ok = tail_certificate(eta, zeta, xi, &margin);
     if (!tail_ok && flag == 0) flag = 7;
 
+    // Final residual check
     if (ok_final && (flag == 0 || flag == 1)) {
         float moment_r = 0.f;
         for (int k = 1; k < N_FEAT; ++k)
@@ -356,6 +378,7 @@ void gyrotropic_12_kernel(
         else if (flag == 0) flag = 1;
     }
 
+    // Transactional warm-start commit
     if (flag == 0)
         for (int k = 0; k < N_FEAT; ++k) lo[k] = lambda[k];
 
@@ -365,6 +388,7 @@ void gyrotropic_12_kernel(
     float* Mr = M_recon + idx * N_FEAT;
     for (int k = 0; k < N_FEAT; ++k) Mr[k] = ok_final ? M[k] : 0.f;
 
+    // Physical outputs (only on success)
     bool valid = (flag == 0) && ok_final && tail_ok;
     float vth2 = thermal_scale * thermal_scale;
     float vth3 = vth2 * thermal_scale;
@@ -438,3 +462,12 @@ print("Ppar sample:", Ppar[:2].get())
 print("Pperp sample:", Pperp[:2].get())
 print("max |M_recon - target|:", float(cp.max(cp.abs(M_recon - M_target))))
 print("margin sample:", margin[:2].get())
+
+# ---------- Residual diagnostic ----------
+# Per-feature absolute errors and scaled residual
+err = M_recon - M_target
+scale = cp.asarray([1,1,1,1,1,1,3,2,3,1,4,3], dtype=cp.float32)
+
+print("Mean absolute errors:", cp.mean(cp.abs(err), axis=0).get())
+print("Maximum absolute errors:", cp.max(cp.abs(err), axis=0).get())
+print("Maximum scaled residual:", cp.max(cp.abs(err) / scale).get())
