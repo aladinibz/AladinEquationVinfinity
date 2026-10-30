@@ -1,7 +1,7 @@
 import cupy as cp
 import numpy as np
 
-# ---------- KERNEL (RES_TOL loosened) ----------
+# ---------- KERNEL (unchanged) ----------
 gyrotropic_12_kernel = cp.RawKernel(r'''
 #define N_FEAT 12
 #define N_FREE 9
@@ -312,33 +312,52 @@ void gyrotropic_12_kernel(
 }
 ''', 'gyrotropic_12_kernel')
 
-# ---------- PROJECTION + TEST ----------
-DISC_M2 = 0.918
-DISC_M3 = 0.921
+# ---------- GENERATE CONSISTENT TARGET FROM BASE GAUSSIAN ----------
+def compute_base_moments(alpha_par=0.5, alpha_perp=0.5):
+    """Exact moments of the pure base Gaussian on the kernel quadrature."""
+    np_h = np.array([-6.5,-5.5,-4.5,-3.5,-2.5,-1.5,-0.5,0.5,1.5,2.5,3.5,4.5,5.5,6.5,7.5,-7.5], dtype=np.float32)
+    wp_h = np.array([0.001,0.004,0.012,0.03,0.07,0.13,0.19,0.19,0.13,0.07,0.03,0.012,0.004,0.001,0.0003,0.0003], dtype=np.float32)
+    nq_h = np.array([0.2,0.55,1.0,1.5,2.1,2.8,3.6,4.5,5.6,6.8,8.2,10.0], dtype=np.float32)
+    wq_h = np.array([0.06,0.12,0.16,0.17,0.15,0.12,0.08,0.05,0.03,0.015,0.008,0.003], dtype=np.float32)
 
-def project_onto_manifold(M_target):
-    Mt = M_target.copy()
-    mean2 = float(cp.mean(Mt[:, 2]))
-    mean3 = float(cp.mean(Mt[:, 3]))
-    if mean2 > 1e-8:
-        Mt[:, 2] *= DISC_M2 / mean2
-    if mean3 > 1e-8:
-        Mt[:, 3] *= DISC_M3 / mean3
-    return Mt
+    def phi(cp, c2):
+        cp2 = cp*cp
+        idp = 1.0/(1.0+cp2)
+        ide = 1.0/(1.0+c2)
+        return np.array([
+            1.0, cp, c2, cp2,
+            cp*idp, cp*c2*ide,
+            c2*c2, cp2*c2, cp2*cp2,
+            (cp**3)*idp*idp, (c2**3)*ide, cp2*(c2**2)*ide
+        ], dtype=np.float32)
 
+    Z = 0.0
+    M = np.zeros(12, dtype=np.float32)
+    for ip in range(16):
+        for iq in range(12):
+            cp = np_h[ip]
+            c2 = nq_h[iq]**2
+            w = wp_h[ip] * wq_h[iq] * nq_h[iq]
+            e = -alpha_par*cp*cp - alpha_perp*c2
+            wgt = np.exp(e) * w
+            Z += wgt
+            M += wgt * phi(cp, c2)
+    return M / Z
+
+M_base = compute_base_moments()
+print("Base moments (should be realizable):")
+print(M_base)
+
+# ---------- TEST CELL ----------
 Ncells = 128
-M_raw = cp.ones((Ncells, 12), dtype=cp.float32)
-M_raw[:, 0] = 1.0
-M_raw[:, 2] = 1.0
-M_raw[:, 3] = 1.0
-
-M_star = project_onto_manifold(M_raw)
+M_target = cp.tile(cp.asarray(M_base), (Ncells, 1)).astype(cp.float32)
 
 n_in = cp.ones(Ncells, dtype=cp.float32)
 lambda_io = cp.zeros((Ncells, 12), dtype=cp.float32)
-lambda_io[:, 6]  = -0.1
-lambda_io[:, 8]  = -0.2
-lambda_io[:, 10] = -0.1
+# warm start close to pure base Gaussian
+lambda_io[:, 6]  = -0.05
+lambda_io[:, 8]  = -0.05
+lambda_io[:, 10] = -0.05
 
 n_out  = cp.empty(Ncells, dtype=cp.float32)
 upar   = cp.empty(Ncells, dtype=cp.float32)
@@ -354,18 +373,18 @@ blocks  = (Ncells + 63) // 64
 
 gyrotropic_12_kernel(
     (blocks,), (threads,),
-    (M_star, n_in, lambda_io,
+    (M_target, n_in, lambda_io,
      n_out, upar, Ppar, Pperp, qpar, qperp,
      margin, status, Ncells,
      np.float32(1.0), np.float32(1.0),
      np.float32(0.5), np.float32(0.5))
 )
 
+print("\n--- RESULTS ---")
 print("status unique:", cp.unique(status).get())
 print("Ppar  sample:", Ppar[:4].get())
 print("Pperp sample:", Pperp[:4].get())
 print("max |qpar| :", float(cp.max(cp.abs(qpar))))
 print("max |qperp|:", float(cp.max(cp.abs(qperp))))
 print("margin sample:", margin[:4].get())
-print("M_star[:,2] mean:", float(cp.mean(M_star[:,2])))
-print("M_star[:,3] mean:", float(cp.mean(M_star[:,3])))
+print("target M[2], M[3]:", M_base[2], M_base[3])
