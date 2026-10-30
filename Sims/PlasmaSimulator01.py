@@ -119,7 +119,7 @@ void gyrotropic_12_kernel(
 }
 ''', 'gyrotropic_12_kernel')
 
-# ---------- ct_emf with anisotropic pressure ----------
+# ---------- ct_emf with anisotropic pressure (scale = 0.1) ----------
 ct_emf_kernel = cp.RawKernel(r'''
 extern "C" __global__
 void utc_emf_kernel(
@@ -161,7 +161,7 @@ void utc_emf_kernel(
     float bx = Bx[g] / Bmag, by = By[g] / Bmag, bz = Bz[g] / Bmag;
     float dP = (Ppar[g] - Pperp[g]);
 
-    float scale = 0.01f / r;
+    float scale = 0.1f / r;          // raised from 0.01f
     Ex += scale * (dP * bx * (bx*dPpar_dx + by*dPpar_dy + bz*dPpar_dz) - dPperp_dx);
     Ey += scale * (dP * by * (bx*dPpar_dx + by*dPpar_dy + bz*dPpar_dz) - dPperp_dy);
     Ez += scale * (dP * bz * (bx*dPpar_dx + by*dPpar_dy + bz*dPpar_dz) - dPperp_dz);
@@ -291,6 +291,7 @@ for step in range(n_steps):
     if step % 5 == 0 or not cp.all(cp.isfinite(Bmag)):
         print(f"step {step:3d}  status unique={cp.unique(status)}  "
               f"mean|B|={float(cp.mean(Bmag)):.6f}  "
+              f"max|B|={float(cp.max(Bmag)):.6f}  "
               f"mean Ppar={float(cp.mean(Ppar)):.6f}  "
               f"mean Pperp={float(cp.mean(Pperp)):.6f}")
         if not cp.all(cp.isfinite(Bmag)):
