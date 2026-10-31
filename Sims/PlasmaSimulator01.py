@@ -1,30 +1,21 @@
-import subprocess, sys
-try:
-    import cupy as cp
-except ImportError:
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "cupy-cuda12x"])
-    import cupy as cp
+import cupy as cp
 import numpy as np
-import csv
-from tqdm.auto import tqdm
 
-# GPU check
-try:
-    assert cp.cuda.runtime.getDeviceCount() > 0
-    print("GPU:", cp.cuda.runtime.getDeviceProperties(0)['name'].decode())
-except Exception:
-    raise RuntimeError("Enable T4/A100 GPU: Runtime → Change runtime type → GPU")
-
-# ---------- gyrotropic_12_kernel (now also outputs residual) ----------
 gyrotropic_12_kernel = cp.RawKernel(r'''
+#include <stdio.h>
 #define N_FEAT 12
-#define MAX_NEWTON 12
+#define N_FREE 9
+#define MAX_NEWTON 8
 #define RES_TOL 2.0e-3f
 
 __device__ __forceinline__ void eval_phi(float cp, float c2, float p[N_FEAT]) {
-    float cp2 = cp*cp, cp3 = cp2*cp, cp4 = cp2*cp2;
-    float c4 = c2*c2, c6 = c4*c2;
-    float idp = 1.f/(1.f+cp2), ide = 1.f/(1.f+c2);
+    float cp2 = cp*cp;
+    float cp3 = cp2*cp;
+    float cp4 = cp2*cp2;
+    float c4 = c2*c2;
+    float c6 = c4*c2;
+    float idp = 1.f/(1.f+cp2);
+    float ide = 1.f/(1.f+c2);
     p[0]=1.f; p[1]=cp; p[2]=c2; p[3]=cp2;
     p[4]=cp*idp; p[5]=cp*c2*ide;
     p[6]=c4; p[7]=cp2*c2; p[8]=cp4;
@@ -36,356 +27,279 @@ __constant__ float wp[16]={0.001f,0.004f,0.012f,0.03f,0.07f,0.13f,0.19f,0.19f,0.
 __constant__ float nq[12]={0.2f,0.55f,1.0f,1.5f,2.1f,2.8f,3.6f,4.5f,5.6f,6.8f,8.2f,10.0f};
 __constant__ float wq[12]={0.06f,0.12f,0.16f,0.17f,0.15f,0.12f,0.08f,0.05f,0.03f,0.015f,0.008f,0.003f};
 
-__device__ void set_from_free(float eta, float zeta, float xi, const float* low, float* lam) {
-    float a = expf(eta), b = expf(zeta);
+__device__ void set_from_free(float eta, float zeta, float xi, const float low[6], float lambda[N_FEAT]) {
+    float a = expf(eta);
+    float b = expf(zeta);
     float s = 0.95f * tanhf(xi);
-    lam[0] = low[0];
-    lam[1] = low[1];
-    lam[2] = low[2];
-    lam[3] = low[3];
-    lam[4] = low[4];
-    lam[5] = low[5];
-    lam[6] = -b*b;
-    lam[7] = -2.f*a*b*s;
-    lam[8] = -a*a;
-    lam[9] = 0.f;
-    lam[10] = 0.f;
-    lam[11] = 0.f;
+    lambda[0] = low[0];
+    lambda[1] = low[1];
+    lambda[2] = low[2];
+    lambda[3] = low[3];
+    lambda[4] = low[4];
+    lambda[5] = low[5];
+    lambda[6] = -a*a;
+    lambda[7] = -2.f*a*b*s;
+    lambda[8] = -b*b;
+    lambda[9] = 0.f;
+    lambda[10]= 0.f;
+    lambda[11]= 0.f;
 }
 
-__device__ bool moments(const float* lam, float ap, float ae,
-                        float* M, float* m3_par, float* m3_mix) {
-    float Z = 0.f, sum_c3 = 0.f, sum_mix = 0.f;
-    for (int k = 0; k < N_FEAT; ++k) M[k] = 0.f;
-    for (int ip = 0; ip < 16; ++ip) {
-        float cp = np[ip];
-        float w_par = wp[ip];
+__device__ void jacobian(float eta, float zeta, float xi, float J[N_FEAT*N_FREE]) {
+    float a = expf(eta);
+    float b = expf(zeta);
+    float s = 0.95f * tanhf(xi);
+    float ds = 0.95f * (1.f - tanhf(xi)*tanhf(xi));
+    for (int i = 0; i < N_FEAT*N_FREE; ++i) J[i] = 0.f;
+    for (int k = 0; k < 6; ++k) J[k*N_FREE + k] = 1.f;
+    J[6*N_FREE + 6] = -2.f*a;
+    J[7*N_FREE + 6] = -2.f*b*s;
+    J[7*N_FREE + 7] = -2.f*a*s;
+    J[8*N_FREE + 7] = -2.f*b;
+    J[7*N_FREE + 8] = -2.f*a*b*ds;
+}
+
+__device__ bool moments(const float lambda[N_FEAT], float alpha_par, float alpha_perp,
+                        float M[N_FEAT], float G[N_FEAT*N_FEAT]) {
+    float Z = 0.f;
+    float sum_phi[N_FEAT];
+    float sum_phi_phi[N_FEAT*N_FEAT];
+    for (int k = 0; k < N_FEAT; ++k) sum_phi[k] = 0.f;
+    for (int k = 0; k < N_FEAT*N_FEAT; ++k) sum_phi_phi[k] = 0.f;
+
+    float m = -1e30f;
+    for (int ip = 0; ip < 16; ++ip)
         for (int iq = 0; iq < 12; ++iq) {
+            float cp = np[ip];
             float c2 = nq[iq]*nq[iq];
-            float w = w_par * wq[iq] * expf(-0.5f*(ap*cp*cp + ae*c2));
             float expo = 0.f;
             float phi[N_FEAT];
             eval_phi(cp, c2, phi);
-            for (int k = 0; k < N_FEAT; ++k) expo += lam[k]*phi[k];
-            float f = w * expf(fminf(expo, 40.f));
-            Z += f;
-            for (int k = 0; k < N_FEAT; ++k) M[k] += f * phi[k];
-            sum_c3  += f * cp*cp*cp;
-            sum_mix += f * cp * c2;
+            for (int k = 0; k < N_FEAT; ++k) expo += lambda[k]*phi[k];
+            expo -= alpha_par*cp*cp - alpha_perp*c2;
+            if (expo > m) m = expo;
         }
-    }
+    for (int ip = 0; ip < 16; ++ip)
+        for (int iq = 0; iq < 12; ++iq) {
+            float cp = np[ip];
+            float c2 = nq[iq]*nq[iq];
+            float w = wp[ip]*wq[iq];
+            float phi[N_FEAT];
+            eval_phi(cp, c2, phi);
+            float expo = 0.f;
+            for (int k = 0; k < N_FEAT; ++k) expo += lambda[k]*phi[k];
+            expo -= alpha_par*cp*cp - alpha_perp*c2;
+            float e = expf(expo - m);
+            Z += w * e;
+            for (int k = 0; k < N_FEAT; ++k) sum_phi[k] += w * e * phi[k];
+            for (int i = 0; i < N_FEAT; ++i)
+                for (int j = 0; j < N_FEAT; ++j)
+                    sum_phi_phi[i*N_FEAT+j] += w * e * phi[i]*phi[j];
+        }
     if (Z < 1e-30f) return false;
     float invZ = 1.f / Z;
-    for (int k = 0; k < N_FEAT; ++k) M[k] *= invZ;
-    *m3_par = sum_c3 * invZ;
-    *m3_mix = sum_mix * invZ;
+    for (int k = 0; k < N_FEAT; ++k) M[k] = sum_phi[k] * invZ;
+    for (int i = 0; i < N_FEAT; ++i)
+        for (int j = 0; j < N_FEAT; ++j)
+            G[i*N_FEAT+j] = sum_phi_phi[i*N_FEAT+j]*invZ - M[i]*M[j];
     return true;
 }
 
-extern "C" __global__
-void gyrotropic_12_kernel(
-    const float* M_target, const float* n_in, float* lambda_io,
-    float* n_out, float* upar_out, float* Ppar_out, float* Pperp_out,
-    float* qpar_out, float* qperp_out, float* residual_out, int* status,
-    int Ncells, float mass, float thermal_scale, float alpha_par, float alpha_perp)
+__global__ void gyrotropic_12_kernel(
+    const float* __restrict__ M_target,
+    const float* __restrict__ n_in,
+    float* __restrict__ lambda_io,
+    float* __restrict__ n_out,
+    float* __restrict__ upar_out,
+    float* __restrict__ Ppar_out,
+    float* __restrict__ Pperp_out,
+    float* __restrict__ qpar_out,
+    float* __restrict__ qperp_out,
+    int* __restrict__ status,
+    int Ncells,
+    float mass,
+    float alpha_par,
+    float alpha_perp,
+    float thermal_scale)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= Ncells) return;
 
-    const float* Mt = M_target + idx * N_FEAT;
-    float* lo = lambda_io + idx * N_FEAT;
+    const float* Mt = M_target + idx*N_FEAT;
+    float* lo = lambda_io + idx*N_FEAT;
 
     float eta = 0.f, zeta = 0.f, xi = 0.f;
-    float low[6] = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
-    float lam[N_FEAT];
+    float low[6];
+    for (int k = 0; k < 6; ++k) low[k] = 0.f;
+    float lambda[N_FEAT];
     float M[N_FEAT];
-    float m3_par = 0.f, m3_mix = 0.f;
-    float final_res = 1e9f;
+    int flag = 1;
 
-    int flag = 0;
+    set_from_free(eta, zeta, xi, low, lambda);
+
     for (int it = 0; it < MAX_NEWTON; ++it) {
-        set_from_free(eta, zeta, xi, low, lam);
-        if (!moments(lam, alpha_par, alpha_perp, M, &m3_par, &m3_mix)) { flag = 6; break; }
+        float G[N_FEAT*N_FEAT];
+        if (!moments(lambda, alpha_par, alpha_perp, M, G)) { flag = 6; break; }
 
         float res = 0.f;
-        for (int k = 1; k < N_FEAT; ++k) res = fmaxf(res, fabsf(M[k] - Mt[k]));
-        final_res = res;
+        for (int k = 1; k < N_FEAT; ++k) res = fmaxf(res, fabsf(M[k]-Mt[k]));
+
+        if (idx == 0 && (it == 0 || it == MAX_NEWTON-1))
+            printf("cell %d it %d res %f\n", idx, it, res);
+
         if (res < RES_TOL) { flag = 0; break; }
 
-        for (int k = 0; k < 6; ++k) low[k] += 0.08f * (Mt[k+1] - M[k+1]);
+        float J[N_FEAT*N_FREE];
+        jacobian(eta, zeta, xi, J);
 
-        float r6 = Mt[6] - M[6];
-        float r7 = Mt[7] - M[7];
-        float r8 = Mt[8] - M[8];
-        eta  += 0.03f * r8;
-        zeta += 0.008f * r6;
-        xi   += 0.015f * r7;
-        eta  = fmaxf(fminf(eta,  2.5f), -2.5f);
-        zeta = fmaxf(fminf(zeta, 2.5f), -2.5f);
-        xi   = fmaxf(fminf(xi,   2.0f), -2.0f);
+        float D[N_FEAT*N_FREE];
+        for (int i = 0; i < N_FEAT; ++i)
+            for (int p = 0; p < N_FREE; ++p) {
+                float s = 0.f;
+                for (int j = 0; j < N_FEAT; ++j) s += G[i*N_FEAT+j] * J[j*N_FREE+p];
+                D[i*N_FREE+p] = s;
+            }
 
-        if (it == MAX_NEWTON-1) flag = 1;
+        float H[N_FREE*N_FREE];
+        float rhs[N_FREE];
+        for (int p = 0; p < N_FREE; ++p) {
+            rhs[p] = 0.f;
+            for (int q = 0; q < N_FREE; ++q) H[p*N_FREE+q] = 0.f;
+        }
+        float ridge = 1e-4f;
+        for (int p = 0; p < N_FREE; ++p) {
+            for (int q = 0; q < N_FREE; ++q) {
+                float s = 0.f;
+                for (int i = 1; i < N_FEAT; ++i) s += D[i*N_FREE+p]*D[i*N_FREE+q];
+                H[p*N_FREE+q] = s;
+            }
+            H[p*N_FREE+p] += ridge;
+            float s = 0.f;
+            for (int i = 1; i < N_FEAT; ++i) s += D[i*N_FREE+p]*(M[i]-Mt[i]);
+            rhs[p] = s;
+        }
+
+        float L[N_FREE*N_FREE];
+        for (int k = 0; k < N_FREE*N_FREE; ++k) L[k] = 0.f;
+        bool ok = true;
+        for (int i = 0; i < N_FREE; ++i) {
+            for (int j = 0; j <= i; ++j) {
+                float s = H[i*N_FREE+j];
+                for (int k = 0; k < j; ++k) s -= L[i*N_FREE+k]*L[j*N_FREE+k];
+                if (i == j) {
+                    if (s <= 1e-12f) { ok = false; break; }
+                    L[i*N_FREE+j] = sqrtf(s);
+                } else {
+                    L[i*N_FREE+j] = s / L[j*N_FREE+j];
+                }
+            }
+            if (!ok) break;
+        }
+        if (!ok) { flag = 4; break; }
+
+        float y[N_FREE];
+        float dx[N_FREE];
+        for (int i = 0; i < N_FREE; ++i) {
+            float s = rhs[i];
+            for (int k = 0; k < i; ++k) s -= L[i*N_FREE+k]*y[k];
+            y[i] = s / L[i*N_FREE+i];
+        }
+        for (int i = N_FREE-1; i >= 0; --i) {
+            float s = y[i];
+            for (int k = i+1; k < N_FREE; ++k) s -= L[k*N_FREE+i]*dx[k];
+            dx[i] = s / L[i*N_FREE+i];
+        }
+
+        float alpha = 1.f;
+        bool accepted = false;
+        for (int ls = 0; ls < 4; ++ls) {
+            float eta2 = eta - alpha*dx[6];
+            float zeta2 = zeta - alpha*dx[7];
+            float xi2 = xi - alpha*dx[8];
+            float low2[6];
+            for (int k = 0; k < 6; ++k) low2[k] = low[k] - alpha*dx[k];
+            float lam2[N_FEAT];
+            set_from_free(eta2, zeta2, xi2, low2, lam2);
+            float M2[N_FEAT];
+            float Gdummy[N_FEAT*N_FEAT];
+            if (!moments(lam2, alpha_par, alpha_perp, M2, Gdummy)) { alpha *= 0.5f; continue; }
+            float res2 = 0.f;
+            for (int k = 1; k < N_FEAT; ++k) res2 = fmaxf(res2, fabsf(M2[k]-Mt[k]));
+            if (res2 < res) {
+                eta = eta2; zeta = zeta2; xi = xi2;
+                for (int k = 0; k < 6; ++k) low[k] = low2[k];
+                set_from_free(eta, zeta, xi, low, lambda);
+                accepted = true;
+                break;
+            }
+            alpha *= 0.5f;
+        }
+        if (!accepted) { flag = 3; break; }
     }
 
+    float Gf[N_FEAT*N_FEAT];
+    bool ok_final = moments(lambda, alpha_par, alpha_perp, M, Gf);
+    float final_res = 1e9f;
+    if (ok_final) {
+        final_res = 0.f;
+        for (int k = 1; k < N_FEAT; ++k) final_res = fmaxf(final_res, fabsf(M[k]-Mt[k]));
+        if (idx == 0) printf("final res %f\n", final_res);
+        if (final_res < RES_TOL) flag = 0;
+        else if (final_res < 0.5f) flag = 1;
+        else flag = 2;
+    } else flag = 6;
+
+    for (int k = 0; k < N_FEAT; ++k) lo[k] = lambda[k];
+    status[idx] = flag;
+
     float n = n_in[idx];
-    float up = M[1];
-    float cp2 = fmaxf(M[3] - up*up, 1e-6f);
-    float ce2 = fmaxf(M[2], 1e-6f);
-
-    float qpar  = mass * n * (m3_par - 3.f*up*cp2 - up*up*up);
-    float qperp = 0.5f * mass * n * (m3_mix - up * M[2]);
-
+    float up = ok_final ? M[1] : 0.f;
+    float cp2 = ok_final ? fmaxf(M[3]-up*up, 1e-8f) : 1e-4f;
+    float ce2 = ok_final ? fmaxf(M[2], 1e-8f) : 1e-4f;
     n_out[idx] = n;
     upar_out[idx] = up;
-    Ppar_out[idx]  = mass * n * cp2;
+    Ppar_out[idx] = mass * n * cp2;
     Pperp_out[idx] = 0.5f * mass * n * ce2;
-    qpar_out[idx]  = qpar;
-    qperp_out[idx] = qperp;
-    residual_out[idx] = final_res;
-    status[idx] = flag;
-    for (int k = 0; k < N_FEAT; ++k) lo[k] = lam[k];
+    qpar_out[idx] = ok_final ? mass * n * M[4] * thermal_scale : 0.f;
+    qperp_out[idx] = ok_final ? mass * n * M[5] * thermal_scale : 0.f;
 }
 ''', 'gyrotropic_12_kernel')
 
-# ---------- ct_emf with anisotropic pressure (scale = 1.0) ----------
-ct_emf_kernel = cp.RawKernel(r'''
-extern "C" __global__
-void utc_emf_kernel(
-    const float* rho, const float* mx, const float* my, const float* mz,
-    const float* Bx, const float* By, const float* Bz,
-    const float* Ppar, const float* Pperp,
-    float* Emfx, float* Emfy, float* Emfz, int Ni)
-{
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    int j = blockIdx.y * blockDim.y + threadIdx.y;
-    int k = blockIdx.z * blockDim.z + threadIdx.z;
-    if (i < 1 || j < 1 || k < 1 || i >= Ni-1 || j >= Ni-1 || k >= Ni-1) return;
 
-    int g = i * Ni * Ni + j * Ni + k;
-    float r = fmaxf(rho[g], 1e-8f);
-    float vx = mx[g] / r;
-    float vy = my[g] / r;
-    float vz = mz[g] / r;
+# ---------- minimal driver ----------
+if __name__ == "__main__":
+    Ncells = 64
+    mass = 1.0
 
-    float Bz_yp = (k+1 < Ni) ? Bz[g + 1] : Bz[g];
-    float By_zp = (j+1 < Ni) ? By[g + Ni] : By[g];
-    float Bx_xp = (i+1 < Ni) ? Bx[g + Ni*Ni] : Bx[g];
-    float Bz_xp = (i+1 < Ni) ? Bz[g + Ni*Ni] : Bz[g];
-    float By_yp = (k+1 < Ni) ? By[g + 1] : By[g];
-    float Bx_yp = (j+1 < Ni) ? Bx[g + Ni] : Bx[g];
-
-    float Ex = -(vy * 0.5f * (Bz[g] + Bz_yp) - vz * 0.5f * (By[g] + By_zp));
-    float Ey = -(vz * 0.5f * (Bx[g] + Bx_xp) - vx * 0.5f * (Bz[g] + Bz_xp));
-    float Ez = -(vx * 0.5f * (By[g] + By_yp) - vy * 0.5f * (Bx[g] + Bx_yp));
-
-    float dPpar_dx  = (Ppar[g + Ni*Ni] - Ppar[g - Ni*Ni]) * 0.5f;
-    float dPpar_dy  = (Ppar[g + Ni]    - Ppar[g - Ni])    * 0.5f;
-    float dPpar_dz  = (Ppar[g + 1]     - Ppar[g - 1])     * 0.5f;
-    float dPperp_dx = (Pperp[g + Ni*Ni] - Pperp[g - Ni*Ni]) * 0.5f;
-    float dPperp_dy = (Pperp[g + Ni]    - Pperp[g - Ni])    * 0.5f;
-    float dPperp_dz = (Pperp[g + 1]     - Pperp[g - 1])     * 0.5f;
-
-    float Bmag = sqrtf(Bx[g]*Bx[g] + By[g]*By[g] + Bz[g]*Bz[g]) + 1e-8f;
-    float bx = Bx[g] / Bmag, by = By[g] / Bmag, bz = Bz[g] / Bmag;
-    float dP = (Ppar[g] - Pperp[g]);
-
-    float scale = 1.0f / r;
-    Ex += scale * (dP * bx * (bx*dPpar_dx + by*dPpar_dy + bz*dPpar_dz) - dPperp_dx);
-    Ey += scale * (dP * by * (bx*dPpar_dx + by*dPpar_dy + bz*dPpar_dz) - dPperp_dy);
-    Ez += scale * (dP * bz * (bx*dPpar_dx + by*dPpar_dy + bz*dPpar_dz) - dPperp_dz);
-
-    Emfx[g] = Ex;
-    Emfy[g] = Ey;
-    Emfz[g] = Ez;
-}
-''', 'utc_emf_kernel')
-
-# ---------- ct_curl (three-component) ----------
-ct_curl_kernel = cp.RawKernel(r'''
-extern "C" __global__
-void ct_curl_kernel(
-    const float* Emfx, const float* Emfy, const float* Emfz,
-    float* Bx, float* By, float* Bz,
-    int Ni, float dt, float inv2dx)
-{
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    int j = blockIdx.y * blockDim.y + threadIdx.y;
-    int k = blockIdx.z * blockDim.z + threadIdx.z;
-    if (i < 1 || j < 1 || k < 1 || i >= Ni-1 || j >= Ni-1 || k >= Ni-1) return;
-    int idx = i * Ni * Ni + j * Ni + k;
-
-    float dEz_dy = (Emfz[idx + Ni] - Emfz[idx - Ni]) * inv2dx;
-    float dEy_dz = (Emfy[idx + 1]  - Emfy[idx - 1])  * inv2dx;
-    Bx[idx] -= dt * (dEz_dy - dEy_dz);
-
-    float dEx_dz = (Emfx[idx + 1]     - Emfx[idx - 1])     * inv2dx;
-    float dEz_dx = (Emfz[idx + Ni*Ni] - Emfz[idx - Ni*Ni]) * inv2dx;
-    By[idx] -= dt * (dEx_dz - dEz_dx);
-
-    float dEy_dx = (Emfy[idx + Ni*Ni] - Emfy[idx - Ni*Ni]) * inv2dx;
-    float dEx_dy = (Emfx[idx + Ni]    - Emfx[idx - Ni])    * inv2dx;
-    Bz[idx] -= dt * (dEy_dx - dEx_dy);
-}
-''', 'ct_curl_kernel')
-
-# ---------- glm (race-free) ----------
-glm_kernel = cp.RawKernel(r'''
-extern "C" __global__
-void glm_kernel(const float* Bx, const float* By, const float* Bz,
-                const float* psi_old, float* psi_new,
-                float* Bx_out, float* By_out, float* Bz_out,
-                int Ni, float dt, float dx, float ch, float damping) {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    int j = blockIdx.y * blockDim.y + threadIdx.y;
-    int k = blockIdx.z * blockDim.z + threadIdx.z;
-    if (i < 1 || j < 1 || k < 1 || i >= Ni-1 || j >= Ni-1 || k >= Ni-1) return;
-    int idx = i * Ni * Ni + j * Ni + k;
-    float inv2dx = 0.5f / dx;
-    float divB = ((Bx[idx+Ni*Ni] - Bx[idx-Ni*Ni]) +
-                  (By[idx+Ni]    - By[idx-Ni]) +
-                  (Bz[idx+1]     - Bz[idx-1])) * inv2dx;
-    float psi_upd = psi_old[idx] - dt * (ch*ch*divB + damping * psi_old[idx]);
-    psi_new[idx] = psi_upd;
-    Bx_out[idx] = Bx[idx] - dt * (psi_old[idx+Ni*Ni] - psi_old[idx-Ni*Ni]) * inv2dx;
-    By_out[idx] = By[idx] - dt * (psi_old[idx+Ni]    - psi_old[idx-Ni])    * inv2dx;
-    Bz_out[idx] = Bz[idx] - dt * (psi_old[idx+1]     - psi_old[idx-1])     * inv2dx;
-}
-''', 'glm_kernel')
-
-# ---------- Driver ----------
-Ni = 64
-Ncells = Ni * Ni * Ni
-dx = np.float32(1.0)
-dt = np.float32(0.001)
-inv2dx = np.float32(0.5 / dx)
-mass = np.float32(1.0)
-thermal_scale = np.float32(1.0)
-alpha_par = np.float32(0.5)
-alpha_perp = np.float32(0.5)
-n_steps = 500
-
-rho = cp.ones((Ni, Ni, Ni), dtype=cp.float32)
-mx = cp.zeros_like(rho)
-my = cp.zeros_like(rho)
-mz = cp.zeros_like(rho)
-Bx = cp.zeros_like(rho)
-By = cp.zeros_like(rho)
-Bz = cp.ones_like(rho) * 0.05
-psi = cp.zeros_like(rho)
-psi_new = cp.zeros_like(rho)
-Bx_new = cp.zeros_like(rho)
-By_new = cp.zeros_like(rho)
-Bz_new = cp.zeros_like(rho)
-Emfx = cp.zeros_like(rho)
-Emfy = cp.zeros_like(rho)
-Emfz = cp.zeros_like(rho)
-
-M_target = cp.zeros((Ncells, 12), dtype=cp.float32)
-lambda_io = cp.zeros((Ncells, 12), dtype=cp.float32)
-n_in = cp.ones(Ncells, dtype=cp.float32)
-n_out = cp.zeros(Ncells, dtype=cp.float32)
-upar = cp.zeros(Ncells, dtype=cp.float32)
-Ppar = cp.zeros(Ncells, dtype=cp.float32)
-Pperp = cp.zeros(Ncells, dtype=cp.float32)
-qpar = cp.zeros(Ncells, dtype=cp.float32)
-qperp = cp.zeros(Ncells, dtype=cp.float32)
-residual = cp.zeros(Ncells, dtype=cp.float32)
-status = cp.zeros(Ncells, dtype=cp.int32)
-
-def init_disk():
-    i = cp.arange(Ni, dtype=cp.float32)
-    X, Y, Z = cp.meshgrid(i, i, i, indexing='ij')
-    R = cp.sqrt((X - Ni/2)**2 + (Y - Ni/2)**2) + 1e-3
-    rho[:] = cp.clip(cp.exp(-R/12) * cp.exp(-cp.abs(Z - Ni/2)/4), 0.05, None)
-    vphi = cp.sqrt(1.0 / (R + 2.0))
-    mx[:] = -vphi * (Y - Ni/2) / R * rho
-    my[:] =  vphi * (X - Ni/2) / R * rho
-init_disk()
-
-threads = (16, 4, 4)
-blocks = ((Ni + 15) // 16, (Ni + 3) // 4, (Ni + 3) // 4)
-threads_g = 128
-blocks_g = (Ncells + 127) // 128
-
-def build_M_target():
-    r = rho.ravel() + 1e-8
+    M_target = cp.zeros((Ncells, 12), dtype=cp.float32)
     M_target[:, 0] = 1.0
-    M_target[:, 2] = cp.clip(2.0 * Pperp / r, 1e-6, 8.0)
-    M_target[:, 3] = cp.clip(Ppar / r,        1e-6, 8.0)
+    M_target[:, 2] = 1.0
+    M_target[:, 3] = 1.0
 
-# CSV log
-csv_path = "/content/plasma_diag_500.csv"
-with open(csv_path, "w", newline="") as f:
-    writer = csv.writer(f)
-    writer.writerow(["step", "status_0", "status_1", "mean_residual", "max_residual",
-                     "mean_B", "max_B", "E_mag",
-                     "mean_Ppar", "mean_Pperp", "ratio",
-                     "mean_radial_force", "max_radial_force"])
+    n_in      = cp.ones(Ncells, dtype=cp.float32)
+    lambda_io = cp.zeros((Ncells, 12), dtype=cp.float32)
+    n_out     = cp.empty(Ncells, dtype=cp.float32)
+    upar      = cp.empty(Ncells, dtype=cp.float32)
+    Ppar      = cp.empty(Ncells, dtype=cp.float32)
+    Pperp     = cp.empty(Ncells, dtype=cp.float32)
+    qpar      = cp.empty(Ncells, dtype=cp.float32)
+    qperp     = cp.empty(Ncells, dtype=cp.float32)
+    status    = cp.empty(Ncells, dtype=cp.int32)
 
-print("Plasma simulator starting (500 steps, residual + radial force) ...")
-for step in tqdm(range(n_steps), desc="plasma steps"):
-    build_M_target()
-    gyrotropic_12_kernel((blocks_g,), (threads_g,),
-        (M_target, n_in, lambda_io, n_out, upar, Ppar, Pperp, qpar, qperp,
-         residual, status, np.int32(Ncells), mass, thermal_scale, alpha_par, alpha_perp))
-    ct_emf_kernel(blocks, threads,
-        (rho, mx, my, mz, Bx, By, Bz, Ppar, Pperp, Emfx, Emfy, Emfz, np.int32(Ni)))
-    ct_curl_kernel(blocks, threads,
-        (Emfx, Emfy, Emfz, Bx, By, Bz, np.int32(Ni), dt, inv2dx))
-    glm_kernel(blocks, threads,
-        (Bx, By, Bz, psi, psi_new, Bx_new, By_new, Bz_new,
-         np.int32(Ni), dt, dx, np.float32(1.0), np.float32(0.5)))
-    # swap buffers
-    psi, psi_new = psi_new, psi
-    Bx, Bx_new = Bx_new, Bx
-    By, By_new = By_new, By
-    Bz, Bz_new = Bz_new, Bz
+    threads = 128
+    blocks  = (Ncells + 127) // 128
 
-    if step % 10 == 0 or not cp.all(cp.isfinite(Bx)):
-        uniq, counts = cp.unique(status, return_counts=True)
-        sc = {int(u): int(c) for u, c in zip(uniq.get(), counts.get())}
-        s0 = sc.get(0, 0); s1 = sc.get(1, 0)
-        mean_res = float(cp.mean(residual))
-        max_res  = float(cp.max(residual))
-        Bmag = cp.sqrt(Bx**2 + By**2 + Bz**2)
-        mean_B = float(cp.mean(Bmag))
-        max_B  = float(cp.max(Bmag))
-        E_mag  = float(cp.mean(Bmag**2))
-        mean_Ppar  = float(cp.mean(Ppar))
-        mean_Pperp = float(cp.mean(Pperp))
-        ratio = mean_Ppar / (mean_Pperp + 1e-12)
+    gyrotropic_12_kernel(
+        (blocks,), (threads,),
+        (M_target, n_in, lambda_io,
+         n_out, upar, Ppar, Pperp, qpar, qperp,
+         status, Ncells,
+         np.float32(mass),
+         np.float32(0.5),
+         np.float32(0.5),
+         np.float32(1.0))
+    )
 
-        # simple radial force diagnostic (anisotropy contribution)
-        # approximate radial direction from center
-        i = cp.arange(Ni, dtype=cp.float32)
-        X, Y, _ = cp.meshgrid(i, i, i, indexing='ij')
-        R = cp.sqrt((X - Ni/2)**2 + (Y - Ni/2)**2) + 1e-3
-        rx = (X - Ni/2) / R
-        ry = (Y - Ni/2) / R
-        # pressure force proxy: (Ppar - Pperp) * |b·∇|b| roughly
-        dP = Ppar - Pperp
-        # very simple radial projection of anisotropic pressure force
-        radial_force = dP * (rx * Bx + ry * By) / (Bmag + 1e-8)
-        mean_rf = float(cp.mean(radial_force))
-        max_rf  = float(cp.max(cp.abs(radial_force)))
-
-        tqdm.write(f"step {step:3d}  status0/1={s0}/{s1}  "
-                   f"res={mean_res:.4f}/{max_res:.4f}  "
-                   f"mean|B|={mean_B:.5f} max|B|={max_B:.5f}  "
-                   f"ratio={ratio:.4f}  radial_force={mean_rf:.6f}")
-
-        with open(csv_path, "a", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow([step, s0, s1, mean_res, max_res,
-                             mean_B, max_B, E_mag,
-                             mean_Ppar, mean_Pperp, ratio,
-                             mean_rf, max_rf])
-
-        if not cp.all(cp.isfinite(Bmag)):
-            tqdm.write("NaN detected — stopping")
-            break
-
-print("Done.")
-print("Final mean residual =", float(cp.mean(residual)))
-print("Final status 0 count =", int(cp.sum(status == 0)))
-print("CSV written to", csv_path)
+    print("status unique:", cp.unique(status))
+    print("Ppar  sample:", Ppar[:4])
+    print("Pperp sample:", Pperp[:4])
