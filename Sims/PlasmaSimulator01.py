@@ -2,7 +2,25 @@ import cupy as cp
 import numpy as np
 
 gyrotropic_12_kernel = cp.RawKernel(r'''
-#include <stdio.h>
+extern "C" __global__
+void gyrotropic_12_kernel(
+    const float* __restrict__ M_target,
+    const float* __restrict__ n_in,
+    float* __restrict__ lambda_io,
+    float* __restrict__ n_out,
+    float* __restrict__ upar_out,
+    float* __restrict__ Ppar_out,
+    float* __restrict__ Pperp_out,
+    float* __restrict__ qpar_out,
+    float* __restrict__ qperp_out,
+    int* __restrict__ status,
+    float* __restrict__ residual_out,
+    int Ncells,
+    float mass,
+    float alpha_par,
+    float alpha_perp,
+    float thermal_scale);
+
 #define N_FEAT 12
 #define N_FREE 9
 #define MAX_NEWTON 8
@@ -105,7 +123,8 @@ __device__ bool moments(const float lambda[N_FEAT], float alpha_par, float alpha
     return true;
 }
 
-__global__ void gyrotropic_12_kernel(
+extern "C" __global__
+void gyrotropic_12_kernel(
     const float* __restrict__ M_target,
     const float* __restrict__ n_in,
     float* __restrict__ lambda_io,
@@ -116,6 +135,7 @@ __global__ void gyrotropic_12_kernel(
     float* __restrict__ qpar_out,
     float* __restrict__ qperp_out,
     int* __restrict__ status,
+    float* __restrict__ residual_out,
     int Ncells,
     float mass,
     float alpha_par,
@@ -134,6 +154,7 @@ __global__ void gyrotropic_12_kernel(
     float lambda[N_FEAT];
     float M[N_FEAT];
     int flag = 1;
+    float final_res = 1e9f;
 
     set_from_free(eta, zeta, xi, low, lambda);
 
@@ -143,9 +164,7 @@ __global__ void gyrotropic_12_kernel(
 
         float res = 0.f;
         for (int k = 1; k < N_FEAT; ++k) res = fmaxf(res, fabsf(M[k]-Mt[k]));
-
-        if (idx == 0 && (it == 0 || it == MAX_NEWTON-1))
-            printf("cell %d it %d res %f\n", idx, it, res);
+        final_res = res;
 
         if (res < RES_TOL) { flag = 0; break; }
 
@@ -239,11 +258,9 @@ __global__ void gyrotropic_12_kernel(
 
     float Gf[N_FEAT*N_FEAT];
     bool ok_final = moments(lambda, alpha_par, alpha_perp, M, Gf);
-    float final_res = 1e9f;
     if (ok_final) {
         final_res = 0.f;
         for (int k = 1; k < N_FEAT; ++k) final_res = fmaxf(final_res, fabsf(M[k]-Mt[k]));
-        if (idx == 0) printf("final res %f\n", final_res);
         if (final_res < RES_TOL) flag = 0;
         else if (final_res < 0.5f) flag = 1;
         else flag = 2;
@@ -251,6 +268,7 @@ __global__ void gyrotropic_12_kernel(
 
     for (int k = 0; k < N_FEAT; ++k) lo[k] = lambda[k];
     status[idx] = flag;
+    residual_out[idx] = final_res;
 
     float n = n_in[idx];
     float up = ok_final ? M[1] : 0.f;
@@ -276,15 +294,16 @@ if __name__ == "__main__":
     M_target[:, 2] = 1.0
     M_target[:, 3] = 1.0
 
-    n_in      = cp.ones(Ncells, dtype=cp.float32)
-    lambda_io = cp.zeros((Ncells, 12), dtype=cp.float32)
-    n_out     = cp.empty(Ncells, dtype=cp.float32)
-    upar      = cp.empty(Ncells, dtype=cp.float32)
-    Ppar      = cp.empty(Ncells, dtype=cp.float32)
-    Pperp     = cp.empty(Ncells, dtype=cp.float32)
-    qpar      = cp.empty(Ncells, dtype=cp.float32)
-    qperp     = cp.empty(Ncells, dtype=cp.float32)
-    status    = cp.empty(Ncells, dtype=cp.int32)
+    n_in         = cp.ones(Ncells, dtype=cp.float32)
+    lambda_io    = cp.zeros((Ncells, 12), dtype=cp.float32)
+    n_out        = cp.empty(Ncells, dtype=cp.float32)
+    upar         = cp.empty(Ncells, dtype=cp.float32)
+    Ppar         = cp.empty(Ncells, dtype=cp.float32)
+    Pperp        = cp.empty(Ncells, dtype=cp.float32)
+    qpar         = cp.empty(Ncells, dtype=cp.float32)
+    qperp        = cp.empty(Ncells, dtype=cp.float32)
+    status       = cp.empty(Ncells, dtype=cp.int32)
+    residual_out = cp.empty(Ncells, dtype=cp.float32)
 
     threads = 128
     blocks  = (Ncells + 127) // 128
@@ -293,7 +312,7 @@ if __name__ == "__main__":
         (blocks,), (threads,),
         (M_target, n_in, lambda_io,
          n_out, upar, Ppar, Pperp, qpar, qperp,
-         status, Ncells,
+         status, residual_out, Ncells,
          np.float32(mass),
          np.float32(0.5),
          np.float32(0.5),
@@ -301,5 +320,6 @@ if __name__ == "__main__":
     )
 
     print("status unique:", cp.unique(status))
+    print("final residual (cell 0):", float(residual_out[0]))
     print("Ppar  sample:", Ppar[:4])
     print("Pperp sample:", Pperp[:4])
